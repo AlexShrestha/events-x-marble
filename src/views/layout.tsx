@@ -52,9 +52,29 @@ const css = `
   .event .title { font-weight: 600; margin-bottom: 4px; }
   .event .meta { color: var(--muted); font-size: 12px; }
   .event .meta a { color: var(--accent); text-decoration: none; }
-  .event .rarity { display: inline-block; background: var(--rare); color: #fff; font-size: 10px;
+  .event .rarity { display: inline-block; font-size: 10px;
     padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
     font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .rarity-muted { background: #3a3f4a; color: #8b95a3; }
+  .rarity-amber { background: #92400e; color: #fbbf24; }
+  .rarity-rare { background: #c2410c; color: #fed7aa; }
+  .rarity-ultra { background: var(--rare); color: #fff; }
+  .source-badge { display: inline-block; background: #232733; color: #8b95a3; font-size: 10px;
+    padding: 2px 7px; border-radius: 4px; margin-right: 7px; vertical-align: middle;
+    font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; max-width: 140px;
+    overflow: hidden; text-overflow: ellipsis; }
+  .stats { font-variant-numeric: tabular-nums; }
+  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .filter-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.06em; white-space: nowrap; }
+  .chip { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px;
+    background: var(--card); border: 1px solid var(--border); color: var(--muted);
+    text-decoration: none; cursor: pointer; transition: border-color 0.15s; }
+  .chip:hover { border-color: var(--accent); color: var(--fg); }
+  .chip-active { background: var(--accent); color: #0f1115; border-color: var(--accent);
+    font-weight: 600; }
+  .chip-cat.chip-active { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+  .filter-row-wrap { gap: 6px; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
   footer { color: var(--muted); font-size: 12px; padding: 24px; text-align: center; }
 `;

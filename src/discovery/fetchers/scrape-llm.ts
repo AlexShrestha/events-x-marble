@@ -22,74 +22,167 @@ const EventDtoSchema = z.object({
 });
 
 const ResultSchema = z.object({
-  events: z.array(EventDtoSchema).max(60),
+  events: z.array(EventDtoSchema).max(200),
 });
 
-const MAX_INPUT_CHARS = 16_000;
+const MAX_INPUT_CHARS = 32_000;
+const EXTRACTION_MAX_TOKENS = 2500;
 
-export async function scrapeViaLlm(
-  source: SourceRecord,
-  opts: FetchOpts,
-): Promise<FetchOutcome> {
-  const cfg = parseConfig(source.config);
-
-  const fetched = await fetchAsMarkdown(source.url);
-  if (!fetched.ok) {
-    return { status: "error", events: [], error: `fetch failed: ${fetched.error}` };
-  }
-
-  const content = fetched.markdown.length > MAX_INPUT_CHARS
-    ? fetched.markdown.slice(0, MAX_INPUT_CHARS)
-    : fetched.markdown;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const windowFrom = opts.windowStartsAt.toISOString().slice(0, 10);
-  const windowTo = opts.windowEndsAt.toISOString().slice(0, 10);
-
-  const systemPrompt = [
+/** Build the system prompt that demands exhaustive extraction. */
+function buildSystemPrompt(today: string, cityName: string, timezone: string, windowFrom: string, windowTo: string): string {
+  return [
     "You extract upcoming events from event-listing web pages.",
-    `Today is ${today}. The reader is in city: ${opts.city.name} (timezone: ${opts.city.timezone}).`,
+    `Today is ${today}. The reader is in city: ${cityName} (timezone: ${timezone}).`,
     `Only return events between ${windowFrom} and ${windowTo} (inclusive).`,
     "Resolve relative dates ('next Friday', 'tonight', 'sábado') using today's date and the city timezone.",
+    "",
+    "CRITICAL — EXHAUSTIVE ENUMERATION:",
+    "List EVERY event visible in the page content. Do not summarize, do not pick favorites.",
+    "If the page lists 40 events, return 40 objects. If it lists 60, return 60.",
+    "Each event in the content with a date and title MUST appear in your output unless its date is outside the window.",
+    "Do NOT merge similar events — each occurrence is its own object.",
+    "Do NOT stop early. Work through the entire content before producing output.",
+    "",
     "Output ONLY a JSON object, no prose, no markdown fences. Schema:",
     '{"events":[{"title":string,"description":string|null,"starts_at":ISO 8601 with timezone,"ends_at":ISO 8601 or null,"venue_name":string|null,"venue_address":string|null,"url":string|null,"category":string|null}]}',
     "If you find nothing, return {\"events\":[]}.",
     "Never invent dates. If the date is ambiguous or missing, skip that event.",
   ].join("\n");
+}
 
-  const userMessage = [
-    `Source URL: ${source.url}`,
-    `Source name: ${source.name}`,
+/** Build user message for a given content slice. */
+function buildUserMessage(sourceUrl: string, sourceName: string, content: string): string {
+  return [
+    `Source URL: ${sourceUrl}`,
+    `Source name: ${sourceName}`,
     "",
     "Page content (already cleaned to markdown/text):",
     "---",
     content,
     "---",
   ].join("\n");
+}
 
-  const result = await extractJson({
-    systemPrompt,
-    userMessage,
-    schema: ResultSchema,
-    maxTokens: 1200,
-  });
+/** Normalise a title+date pair for dedup. */
+function dedupeKey(title: string, startsAt: string): string {
+  return `${title.toLowerCase().replace(/\s+/g, " ").trim()}|${startsAt.slice(0, 16)}`;
+}
 
-  if (!result.ok || !result.parsed) {
-    return {
-      status: "rate_limited",
-      events: [],
-      tokens_used: result.tokens_used,
-      cost_usd: result.cost_usd,
-      model_used: result.model_used ?? undefined,
-      error: result.error ?? "no usable response from any free model",
-    };
+export async function scrapeViaLlm(
+  source: SourceRecord,
+  opts: FetchOpts & { deep?: boolean },
+): Promise<FetchOutcome> {
+  const cfg = parseConfig(source.config);
+  const t0 = performance.now();
+
+  const fetched = await fetchAsMarkdown(source.url);
+  if (!fetched.ok) {
+    return { status: "error", events: [], error: `fetch failed: ${fetched.error}` };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const windowFrom = opts.windowStartsAt.toISOString().slice(0, 10);
+  const windowTo = opts.windowEndsAt.toISOString().slice(0, 10);
+
+  const systemPrompt = buildSystemPrompt(today, opts.city.name, opts.city.timezone, windowFrom, windowTo);
+
+  // Truncate to MAX_INPUT_CHARS for single-pass; if deep mode and content overflows, chunk it.
+  const fullMarkdown = fetched.markdown;
+  const inputChars = Math.min(fullMarkdown.length, MAX_INPUT_CHARS);
+  const content = fullMarkdown.slice(0, MAX_INPUT_CHARS);
+
+  let allDtos: z.infer<typeof EventDtoSchema>[] = [];
+  let tokensUsed = 0;
+  let costUsd = 0;
+  let modelUsed: string | null = null;
+
+  // ---- deep chunking: fullMarkdown > MAX_INPUT_CHARS ----
+  if (opts.deep && fullMarkdown.length > MAX_INPUT_CHARS) {
+    // Split into two halves (each ≤ MAX_INPUT_CHARS), call extractor independently, then dedup.
+    const half = Math.ceil(fullMarkdown.length / 2);
+    const chunks = [
+      fullMarkdown.slice(0, half),
+      fullMarkdown.slice(half),
+    ];
+
+    for (const chunk of chunks) {
+      const chunkContent = chunk.slice(0, MAX_INPUT_CHARS);
+      const userMessage = buildUserMessage(source.url, source.name, chunkContent);
+      const result = await extractJson({
+        systemPrompt,
+        userMessage,
+        schema: ResultSchema,
+        maxTokens: EXTRACTION_MAX_TOKENS,
+      });
+      if (result.ok && result.parsed) {
+        allDtos.push(...result.parsed.events);
+        if (!modelUsed) modelUsed = result.model_used;
+      }
+      tokensUsed += result.tokens_used;
+      costUsd += result.cost_usd;
+    }
+
+    // Dedup by normalised title+date
+    const seen = new Set<string>();
+    allDtos = allDtos.filter((dto) => {
+      const key = dedupeKey(dto.title, dto.starts_at);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } else {
+    // Single pass — try full content (32K), then fall back to 16K if all models fail.
+    const FALLBACK_CHARS = MAX_INPUT_CHARS / 2; // 16_000
+    const contentSlices: string[] = [content];
+    if (fullMarkdown.length > FALLBACK_CHARS) {
+      contentSlices.push(fullMarkdown.slice(0, FALLBACK_CHARS));
+    }
+
+    let succeeded = false;
+    let lastError = "no usable response from any free model";
+
+    for (const slice of contentSlices) {
+      const userMessage = buildUserMessage(source.url, source.name, slice);
+      const result = await extractJson({
+        systemPrompt,
+        userMessage,
+        schema: ResultSchema,
+        maxTokens: EXTRACTION_MAX_TOKENS,
+      });
+
+      tokensUsed += result.tokens_used;
+      costUsd += result.cost_usd;
+      if (result.model_used) modelUsed = result.model_used;
+
+      if (result.ok && result.parsed) {
+        allDtos = result.parsed.events;
+        succeeded = true;
+        break;
+      }
+      lastError = result.error ?? lastError;
+    }
+
+    if (!succeeded) {
+      const elapsed = (performance.now() - t0).toFixed(0);
+      console.log(
+        `[scrape-llm] ${source.name} | inputChars=${inputChars} outputEvents=0 model=${modelUsed ?? "none"} elapsed=${elapsed}ms`,
+      );
+      return {
+        status: "rate_limited",
+        events: [],
+        tokens_used: tokensUsed,
+        cost_usd: costUsd,
+        model_used: modelUsed ?? undefined,
+        error: lastError,
+      };
+    }
   }
 
   const horizonStart = opts.windowStartsAt.getTime();
   const horizonEnd = opts.windowEndsAt.getTime();
   const events: EventCandidate[] = [];
 
-  for (const dto of result.parsed.events) {
+  for (const dto of allDtos) {
     const startMs = Date.parse(dto.starts_at);
     if (!Number.isFinite(startMs)) continue;
     if (startMs < horizonStart || startMs > horizonEnd) continue;
@@ -107,16 +200,21 @@ export async function scrapeViaLlm(
       category: dto.category ?? cfg.category ?? null,
       rarity_score: cfg.rarity_score ?? 0.4,
       confidence: 0.75,
-      raw_extract: { via: fetched.via, model: result.model_used },
+      raw_extract: { via: fetched.via, model: modelUsed },
     });
   }
+
+  const elapsed = (performance.now() - t0).toFixed(0);
+  console.log(
+    `[scrape-llm] ${source.name} | inputChars=${inputChars} outputEvents=${events.length} model=${modelUsed ?? "none"} elapsed=${elapsed}ms`,
+  );
 
   return {
     status: "ok",
     events,
-    tokens_used: result.tokens_used,
-    cost_usd: result.cost_usd,
-    model_used: result.model_used ?? undefined,
+    tokens_used: tokensUsed,
+    cost_usd: costUsd,
+    model_used: modelUsed ?? undefined,
   };
 }
 

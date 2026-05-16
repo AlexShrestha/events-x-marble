@@ -10,13 +10,16 @@
     "seed": "bun src/db/seed.ts",
     "pipeline": "bun src/discovery/cli.ts",
     "scout": "bun src/scout/cli.ts",
+    "enrich": "bun src/discovery/enrich-cli.ts",
     "research:deep": "bun src/research/deep.ts",
     "typecheck": "bunx tsc --noEmit",
+    "geocode": "bun src/discovery/backfill-geo.ts",
     "test": "bun test"
   },
   "dependencies": {
     "hono": "^4.6.0",
     "ical.js": "^2.2.1",
+    "playwright": "^1.60.0",
     "rss-parser": "^3.13.0",
     "zod": "^3.23.0"
   },

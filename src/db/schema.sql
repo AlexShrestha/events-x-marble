@@ -86,3 +86,11 @@ CREATE TABLE IF NOT EXISTS cost_ledger (
   created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_cost_ledger_created ON cost_ledger(created_at);
+
+CREATE TABLE IF NOT EXISTS geocode_cache (
+  key         TEXT PRIMARY KEY,
+  lat         REAL,
+  lng         REAL,
+  display     TEXT,
+  queried_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);

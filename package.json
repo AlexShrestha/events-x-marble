@@ -1,0 +1,27 @@
+{
+  "name": "events-x-marble",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/server.tsx",
+    "start": "bun src/server.tsx",
+    "migrate": "bun src/db/migrate.ts",
+    "seed": "bun src/db/seed.ts",
+    "pipeline": "bun src/discovery/cli.ts",
+    "scout": "bun src/scout/cli.ts",
+    "research:deep": "bun src/research/deep.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "ical.js": "^2.2.1",
+    "rss-parser": "^3.13.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.0"
+  }
+}

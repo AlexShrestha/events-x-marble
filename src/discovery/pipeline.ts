@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "../db/index.ts";
+import { fetchGraphqlApi } from "./fetchers/graphql-api.ts";
 import { fetchIcal } from "./fetchers/ical.ts";
 import { fetchJsonApi } from "./fetchers/json-api.ts";
 import { scrapeViaLlm } from "./fetchers/scrape-llm.ts";
@@ -154,6 +155,9 @@ async function runOneSource(source: SourceRecord, opts: FetchOpts): Promise<Fetc
 
   if (source.kind === "feed" && cfg.format === "ical") {
     return decorateOutcome(await fetchIcal(source, opts), cfg);
+  }
+  if (source.kind === "api" && (cfg as { format?: string }).format === "graphql") {
+    return decorateOutcome(await fetchGraphqlApi(source, opts), cfg);
   }
   if (source.kind === "api" || (source.kind === "feed" && cfg.format === "json")) {
     return decorateOutcome(await fetchJsonApi(source, opts), cfg);

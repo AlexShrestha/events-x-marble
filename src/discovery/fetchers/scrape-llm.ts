@@ -50,6 +50,39 @@ function buildSystemPrompt(today: string, cityName: string, timezone: string, wi
   ].join("\n");
 }
 
+/**
+ * Telegram-channel-specific prompt. The content is a stream of recent posts; many won't be events.
+ * Posts use heavy relative dating ("este sábado", "mañana", "el 25 a las 21h"), emoji, and often pack
+ * multiple events in one message. Different shape than HTML event-listing pages.
+ */
+function buildTelegramSystemPrompt(today: string, cityName: string, timezone: string, windowFrom: string, windowTo: string): string {
+  return [
+    `You're reading recent posts from a public Telegram channel about events in ${cityName}.`,
+    `Today is ${today} (timezone: ${timezone}).`,
+    `Only return events between ${windowFrom} and ${windowTo} (inclusive).`,
+    "",
+    "The content is a chronological stream of channel posts. MOST posts are NOT events — they may be news, opinion, memes, promos, reposts. Extract ONLY messages describing concrete upcoming events.",
+    "",
+    "Rules:",
+    "- A real event has: a date (absolute OR relative) + a venue/location + a title or activity description.",
+    "- Resolve relative dates strictly using TODAY. 'este sábado' = next Saturday; 'mañana' = tomorrow; 'el 25' = the 25th of the current month (or next month if 25th has passed). Resolve to ISO 8601 with the city timezone.",
+    "- A single message may announce multiple events (e.g. a weekend programme) — emit each as a separate object.",
+    "- Strip emoji/markdown decoration from titles.",
+    "- If a post links to an external event page (https://…), set `url` to that link, not the Telegram message URL.",
+    "- SKIP posts that lack a concrete date OR lack a venue. SKIP recap/past-tense posts. SKIP news without event-action.",
+    "- Languages may be Catalan, Spanish, English, Russian — handle all.",
+    "",
+    "Output ONLY a JSON object, no prose, no markdown fences. Schema:",
+    '{"events":[{"title":string,"description":string|null,"starts_at":ISO 8601 with timezone,"ends_at":ISO 8601 or null,"venue_name":string|null,"venue_address":string|null,"url":string|null,"category":string|null}]}',
+    "If you find nothing extractable, return {\"events\":[]}. Never invent dates or venues.",
+  ].join("\n");
+}
+
+/** Detect that this source is a Telegram public-channel view. */
+function isTelegramSource(url: string): boolean {
+  return /(?:^|\/\/)t\.me\/s\//i.test(url);
+}
+
 /** Build user message for a given content slice. */
 function buildUserMessage(sourceUrl: string, sourceName: string, content: string): string {
   return [
@@ -84,7 +117,9 @@ export async function scrapeViaLlm(
   const windowFrom = opts.windowStartsAt.toISOString().slice(0, 10);
   const windowTo = opts.windowEndsAt.toISOString().slice(0, 10);
 
-  const systemPrompt = buildSystemPrompt(today, opts.city.name, opts.city.timezone, windowFrom, windowTo);
+  const systemPrompt = isTelegramSource(source.url)
+    ? buildTelegramSystemPrompt(today, opts.city.name, opts.city.timezone, windowFrom, windowTo)
+    : buildSystemPrompt(today, opts.city.name, opts.city.timezone, windowFrom, windowTo);
 
   // Truncate to MAX_INPUT_CHARS for single-pass; if deep mode and content overflows, chunk it.
   const fullMarkdown = fetched.markdown;

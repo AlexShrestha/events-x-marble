@@ -7,7 +7,10 @@
  * @libsql/client API is async. ALL query call sites in this codebase therefore
  * use `await db().execute(...)` or the helpers below.
  */
-import { createClient, type Client, type InArgs } from "@libsql/client";
+// Use the web entry — pure JS, fetch-based, no native bindings.
+// Works on Vercel's Linux x64 runtime AND in Bun local dev (against Turso HTTPS).
+// Tradeoff: no `file:./data.db` local mode. Local dev now uses TURSO_URL too.
+import { createClient, type Client, type InArgs } from "@libsql/client/web";
 import { env } from "../env.ts";
 // Schema is embedded as a string via the .sql text loader (esbuild + bunfig.toml).
 // Disk reads via __dirname don't survive bundling for Vercel.
@@ -23,16 +26,15 @@ interface LibsqlConfig {
 }
 
 export function libsqlConfig(): LibsqlConfig {
-  if (env.TURSO_URL) {
-    return env.TURSO_AUTH_TOKEN
-      ? { url: env.TURSO_URL, authToken: env.TURSO_AUTH_TOKEN }
-      : { url: env.TURSO_URL };
+  if (!env.TURSO_URL) {
+    throw new Error(
+      "TURSO_URL not set. The web client requires a libsql:// or https:// URL " +
+        "(file:./data.db mode is not supported by @libsql/client/web).",
+    );
   }
-  // Translate legacy sqlite://./path.db → file:./path.db
-  if (env.DATABASE_URL.startsWith("sqlite://")) {
-    return { url: "file:" + env.DATABASE_URL.slice("sqlite://".length) };
-  }
-  return { url: env.DATABASE_URL };
+  // @libsql/client/web requires https://, not libsql:// scheme.
+  const url = env.TURSO_URL.replace(/^libsql:/i, "https:");
+  return env.TURSO_AUTH_TOKEN ? { url, authToken: env.TURSO_AUTH_TOKEN } : { url };
 }
 
 export function db(): Client {

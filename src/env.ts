@@ -23,6 +23,15 @@ const EnvSchema = z.object({
   // so we pass it as a query param. URL = private capability link.
   // KEEP OUT OF GIT. Generate with `openssl rand -hex 24`.
   ME_TOKEN: z.string().optional(),
+
+  // SMTP for the autonomous weekly cron. For Gmail: smtp.gmail.com:465 + App Password.
+  // KEEP OUT OF GIT. Used only by the deliver --send code path; absence falls back to dry-run.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  SMTP_TO: z.string().email().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

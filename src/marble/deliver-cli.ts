@@ -14,6 +14,7 @@ import { applySchema, closeDb, db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { scoreEventsForUser, type EventForScoring } from "./scorer.ts";
 import { renderEmail } from "./email-render.ts";
+import { sendEmail } from "./send-email.ts";
 
 const { values } = parseArgs({
   options: {
@@ -25,6 +26,9 @@ const { values } = parseArgs({
     "html-out": { type: "string" },
     "text-out": { type: "string" },
     "json-out": { type: "string" },
+    send: { type: "boolean" },
+    "send-to": { type: "string" },
+    "dry-run": { type: "boolean" },
   },
 });
 
@@ -152,5 +156,32 @@ console.log(`html : ${htmlOut} (${email.htmlBody.length} bytes)`);
 console.log(`text : ${textOut} (${email.textBody.length} bytes)`);
 console.log(`json : ${jsonOut}`);
 console.log(`model: ${result.meta.model_used} · tokens ${result.meta.tokens_used} · cost $${result.meta.cost_usd.toFixed(4)}`);
+
+// Optional SMTP send (for the autonomous weekly cron).
+if (values.send && !values["dry-run"]) {
+  const recipient = values["send-to"] ?? env.SMTP_TO;
+  if (!recipient) {
+    console.error("--send was passed but no recipient: set SMTP_TO in .env or pass --send-to <addr>");
+    closeDb();
+    process.exit(2);
+  }
+  console.log("");
+  console.log(`sending via SMTP → ${recipient}…`);
+  const send = await sendEmail({
+    to: recipient,
+    subject: email.subject,
+    htmlBody: email.htmlBody,
+    textBody: email.textBody,
+  });
+  if (send.ok) {
+    console.log(`✓ sent. messageId=${send.messageId ?? "?"} accepted=${(send.accepted ?? []).length} rejected=${(send.rejected ?? []).length}`);
+  } else {
+    console.error(`✗ send failed: ${send.error}`);
+    closeDb();
+    process.exit(1);
+  }
+} else if (values.send) {
+  console.log("(--send + --dry-run → would have sent; skipping)");
+}
 
 closeDb();

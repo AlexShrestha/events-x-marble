@@ -38,6 +38,9 @@ export interface EventForScoring {
   starts_at: string;
   ends_at?: string | null;
   venue_name?: string | null;
+  venue_address?: string | null;
+  venue_lat?: number | null;
+  venue_lng?: number | null;
   category?: string | null;
   rarity_score: number;
   source: string;

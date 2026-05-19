@@ -18,6 +18,11 @@ const EnvSchema = z.object({
   // Path to the deployment's marble knowledge-graph JSON file (read-only).
   // KEEP OUT OF GIT. Per-deployment; the engine never persists KG content back to its own DB.
   MARBLE_KG_PATH: z.string().optional(),
+
+  // Shared secret for personalized routes (/me/*). Calendar apps can't add headers,
+  // so we pass it as a query param. URL = private capability link.
+  // KEEP OUT OF GIT. Generate with `openssl rand -hex 24`.
+  ME_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -6,6 +6,7 @@ import { cities } from "./routes/cities.ts";
 import { events } from "./routes/events.ts";
 import { admin } from "./routes/admin.ts";
 import { icsApp } from "./routes/ics.ts";
+import { meIcsApp } from "./routes/me-ics.ts";
 import { Home } from "./views/home.tsx";
 
 applySchema();
@@ -18,6 +19,7 @@ app.route("/api/v1/cities", cities);
 app.route("/api/v1/events", events);
 app.route("/api/v1/admin", admin);
 app.route("/calendar.ics", icsApp);
+app.route("/me/calendar.ics", meIcsApp);
 
 app.get("/", (c) => {
   const all = listCities();
@@ -93,5 +95,7 @@ console.log(`Events x Marble listening on http://localhost:${port}`);
 
 export default {
   port,
+  // Personalized routes call the LLM (~30s for marble scoring). Default 10s is too tight.
+  idleTimeout: 120,
   fetch: app.fetch,
 };

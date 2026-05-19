@@ -1,4 +1,5 @@
-const USER_AGENT = "events-x-marble/0.1 (+contact: alex.shrestha88@gmail.com)";
+import { getUserAgent } from "../lib/user-agent.ts";
+const USER_AGENT = getUserAgent();
 const TIMEOUT = 15_000;
 
 export interface VerifyOutcome {

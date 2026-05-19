@@ -10,6 +10,14 @@ const EnvSchema = z.object({
   // Direct Anthropic — optional, only if you want to bypass Zen for Claude calls.
   ANTHROPIC_API_KEY: z.string().optional(),
   BRAVE_SEARCH_API_KEY: z.string().optional(),
+
+  // Per-deployment identity. Used in outbound User-Agent strings.
+  // KEEP OUT OF GIT. Set in .env; fallback is a generic placeholder.
+  CONTACT_EMAIL: z.string().email().optional(),
+
+  // Path to the deployment's marble knowledge-graph JSON file (read-only).
+  // KEEP OUT OF GIT. Per-deployment; the engine never persists KG content back to its own DB.
+  MARBLE_KG_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

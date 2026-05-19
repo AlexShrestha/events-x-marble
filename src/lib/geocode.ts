@@ -5,9 +5,10 @@
  */
 
 import { db } from "../db/index.ts";
+import { getUserAgent } from "./user-agent.ts";
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
-const USER_AGENT = "events-x-marble/0.1 (alex.shrestha88@gmail.com)";
+const USER_AGENT = getUserAgent();
 const NOT_FOUND_SENTINEL = "not_found";
 
 interface GeocodeResult {

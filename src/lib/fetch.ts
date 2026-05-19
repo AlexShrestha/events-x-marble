@@ -1,6 +1,7 @@
 import type { Browser } from "playwright";
+import { getUserAgent } from "./user-agent.ts";
 
-const USER_AGENT = "events-x-marble/0.1 (+contact: alex.shrestha88@gmail.com)";
+const USER_AGENT = getUserAgent();
 const FETCH_TIMEOUT_MS = 30_000;
 const PLAYWRIGHT_TIMEOUT_MS = 30_000;
 const JINA_BASE = "https://r.jina.ai/";

@@ -5,7 +5,8 @@ import type {
   SourceRecord,
 } from "../types.ts";
 
-const USER_AGENT = "events-x-marble/0.1 (+contact: alex.shrestha88@gmail.com)";
+import { getUserAgent } from "../../lib/user-agent.ts";
+const USER_AGENT = getUserAgent();
 const FETCH_TIMEOUT_MS = 30_000;
 const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_MAX_PAGES = 5; // 5 × 50 = 250 events per run

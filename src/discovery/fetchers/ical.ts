@@ -1,7 +1,8 @@
 import ICAL from "ical.js";
 import type { EventCandidate, FetchOpts, FetchOutcome, SourceRecord } from "../types.ts";
 
-const USER_AGENT = "events-x-marble/0.1 (+contact: alex.shrestha88@gmail.com)";
+import { getUserAgent } from "../../lib/user-agent.ts";
+const USER_AGENT = getUserAgent();
 const FETCH_TIMEOUT_MS = 30_000;
 
 export async function fetchIcal(

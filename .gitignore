@@ -1,11 +1,31 @@
+# --- deps + build
 node_modules/
+dist/
+.cache/
+
+# --- secrets + per-deployment env (NEVER commit)
 .env
 .env.local
+.env.*.local
+
+# --- local database + WAL files
 data.db
 data.db-journal
 data.db-wal
 data.db-shm
+
+# --- per-deployment private overlays (anything alex/user-specific lives here)
+private/
+local/
+*.local.ts
+*.local.json
+
+# --- marble knowledge-graph files (paranoia: never let any KG-shaped JSON into git)
+*-kg.json
+*.kg.json
+*marble*kg*.json
+*kg-full*.json
+
+# --- misc
 *.log
 .DS_Store
-dist/
-.cache/

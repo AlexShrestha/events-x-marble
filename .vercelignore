@@ -15,3 +15,6 @@ test/
 docs/
 *.local.ts
 *.local.json
+
+# Don't hide api/index.ts — the build script needs it as the esbuild entry.
+# vercel.json#functions pins api/index.mjs as the only function file.

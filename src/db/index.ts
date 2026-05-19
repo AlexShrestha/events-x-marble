@@ -8,12 +8,12 @@
  * use `await db().execute(...)` or the helpers below.
  */
 import { createClient, type Client, type InArgs } from "@libsql/client";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { env } from "../env.ts";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// Schema is embedded as a string via the .sql text loader (esbuild + bunfig.toml).
+// Disk reads via __dirname don't survive bundling for Vercel.
+// Import attribute syntax `with { type: "text" }` removed — older Bun on Vercel CI
+// trips on the combination; loader config in build-vercel.ts handles it.
+import schemaSqlText from "./schema.sql";
 
 let _client: Client | null = null;
 
@@ -43,8 +43,7 @@ export function db(): Client {
 }
 
 export async function applySchema(): Promise<void> {
-  const sql = readFileSync(resolve(__dirname, "schema.sql"), "utf8");
-  await db().executeMultiple(sql);
+  await db().executeMultiple(schemaSqlText);
 }
 
 export function closeDb(): void {

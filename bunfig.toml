@@ -1,2 +1,6 @@
 [install]
 exact = false
+
+# Treat .sql imports as text strings.
+[loader]
+".sql" = "text"

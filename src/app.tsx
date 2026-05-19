@@ -6,7 +6,6 @@
  * Vercel entry: api/index.ts   (hono/vercel `handle(app)` wraps the same app)
  */
 import { Hono } from "hono";
-import { applySchema } from "./db/index.ts";
 import { getCityBySlug, listCities, listEvents } from "./db/queries.ts";
 import { cities } from "./routes/cities.ts";
 import { events } from "./routes/events.ts";
@@ -15,12 +14,9 @@ import { icsApp } from "./routes/ics.ts";
 import { meIcsApp } from "./routes/me-ics.ts";
 import { Home } from "./views/home.tsx";
 
-// Idempotent schema bootstrap (CREATE TABLE IF NOT EXISTS).
-// Runs once at module init in both Bun and Vercel cold-starts.
-// Catch + log: a slow/failing DB should not break the function altogether.
-applySchema().catch((e) => {
-  console.error("[app] applySchema failed at boot:", e instanceof Error ? e.message : e);
-});
+// Schema is applied via the separate `bun run migrate` command, not on cold start.
+// Module-init DB calls in the bundled Vercel function were hanging during cold start
+// (function timed out before the libsql HTTP handshake completed).
 
 export const app = new Hono();
 

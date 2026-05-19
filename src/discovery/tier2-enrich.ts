@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db } from "../db/index.ts";
+import { exec, execBatch, queryAll } from "../db/index.ts";
 import { extractJson, HAIKU_FALLBACK } from "../lib/llm.ts";
 
 export interface EnrichOpts {
@@ -118,15 +118,14 @@ export async function enrichRecentEvents(
   const limit = opts.limit ?? 50;
   const dryRun = opts.dryRun ?? false;
 
-  const D = db();
-
-  const rows = D.query(
+  const rows = await queryAll<RawEvent>(
     `SELECT e.id, e.title, e.category, e.rarity_score, s.name AS source_name
      FROM events e
      JOIN sources s ON s.id = e.source_id
      WHERE (e.category IS NULL OR e.category = '')
      LIMIT ?`,
-  ).all(limit) as RawEvent[];
+    [limit],
+  );
 
   if (rows.length === 0) {
     return { categorized: 0, updated: 0, cost_usd: 0 };
@@ -154,7 +153,6 @@ export async function enrichRecentEvents(
 
     if (items.length === 0) continue;
 
-    // Build lookup for source names
     const sourceByEventId = new Map<string, string>(
       batch.map((e) => [e.id, e.source_name]),
     );
@@ -162,36 +160,25 @@ export async function enrichRecentEvents(
     totalCategorized += items.length;
 
     if (!dryRun) {
-      const updateCategory = D.prepare(
-        `UPDATE events SET category = ?, rarity_score = ?, updated_at = datetime('now') WHERE id = ?`,
-      );
-
-      const tx = D.transaction((categoryItems: CategoryItem[]) => {
-        for (const item of categoryItems) {
-          const event = batch.find((e) => e.id === item.id);
-          if (!event) continue;
-          const sourceName = sourceByEventId.get(item.id) ?? "";
-          const newRarity = computeRarityScore(
-            event.title,
-            item.category,
-            sourceName,
-          );
-          updateCategory.run(item.category, newRarity, item.id);
-          totalUpdated++;
-        }
-      });
-      tx(items);
-    } else {
-      // In dry-run, log what would happen
+      const stmts: Array<{ sql: string; args: Array<string | number> }> = [];
       for (const item of items) {
         const event = batch.find((e) => e.id === item.id);
         if (!event) continue;
         const sourceName = sourceByEventId.get(item.id) ?? "";
-        const newRarity = computeRarityScore(
-          event.title,
-          item.category,
-          sourceName,
-        );
+        const newRarity = computeRarityScore(event.title, item.category, sourceName);
+        stmts.push({
+          sql: `UPDATE events SET category = ?, rarity_score = ?, updated_at = datetime('now') WHERE id = ?`,
+          args: [item.category, newRarity, item.id],
+        });
+      }
+      const written = await execBatch(stmts);
+      totalUpdated += written;
+    } else {
+      for (const item of items) {
+        const event = batch.find((e) => e.id === item.id);
+        if (!event) continue;
+        const sourceName = sourceByEventId.get(item.id) ?? "";
+        const newRarity = computeRarityScore(event.title, item.category, sourceName);
         console.log(
           `[dry-run] ${event.title} -> ${item.category} (rarity: ${event.rarity_score} -> ${newRarity.toFixed(2)})`,
         );
@@ -201,9 +188,7 @@ export async function enrichRecentEvents(
   }
 
   if (!dryRun && totalCost > 0) {
-    // tokens_used is total (prompt + completion). Store in prompt_tokens; completion_tokens = 0
-    // since the LLM helper only exposes the total via tokens_used in LlmResult.
-    D.run(
+    await exec(
       `INSERT INTO cost_ledger (id, run_id, model, prompt_tokens, completion_tokens, cost_usd, created_at)
        VALUES (?, NULL, ?, ?, ?, ?, datetime('now'))`,
       [randomUUID(), HAIKU_FALLBACK.id, totalTokensUsed, 0, totalCost],

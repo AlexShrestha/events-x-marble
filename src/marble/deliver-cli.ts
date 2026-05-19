@@ -10,7 +10,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { applySchema, closeDb, db } from "../db/index.ts";
+import { applySchema, closeDb, queryAll, queryGet } from "../db/index.ts";
 import { env } from "../env.ts";
 import { scoreEventsForUser, type EventForScoring } from "./scorer.ts";
 import { renderEmail } from "./email-render.ts";
@@ -41,7 +41,7 @@ if (!env.MARBLE_KG_PATH) {
   process.exit(2);
 }
 
-applySchema();
+await applySchema();
 
 const days = values.days ? Number(values.days) : 14;
 const threshold = values.threshold ? Number(values.threshold) : 0.85;
@@ -49,12 +49,16 @@ const htmlOut = values["html-out"] ?? "/tmp/marble-email.html";
 const textOut = values["text-out"] ?? "/tmp/marble-email.txt";
 const jsonOut = values["json-out"] ?? "/tmp/marble-email.json";
 
-const D = db();
-const city = D.query(
+const city = await queryGet<{
+  slug: string;
+  name: string;
+  timezone: string;
+  centroid_lng: number | null;
+  centroid_lat: number | null;
+}>(
   "SELECT slug, name, timezone, centroid_lng, centroid_lat FROM cities WHERE slug = ?",
-).get(values.city) as
-  | { slug: string; name: string; timezone: string; centroid_lng: number | null; centroid_lat: number | null }
-  | null;
+  [values.city],
+);
 if (!city) {
   console.error(`Unknown city: ${values.city}`);
   process.exit(2);
@@ -63,15 +67,7 @@ if (!city) {
 const now = new Date();
 const horizon = new Date(now.getTime() + days * 86_400_000);
 
-const rows = D.query(
-  `SELECT e.id, e.title, e.description, e.starts_at, e.ends_at,
-          e.venue_name, e.venue_address, e.venue_lat, e.venue_lng,
-          e.category, e.rarity_score, e.url, s.name AS source_name
-   FROM events e JOIN sources s ON s.id = e.source_id
-   WHERE e.city_id = (SELECT id FROM cities WHERE slug = ?)
-     AND e.starts_at >= ? AND e.starts_at < ?
-   ORDER BY e.starts_at ASC`,
-).all(city.slug, now.toISOString(), horizon.toISOString()) as Array<{
+const rows = await queryAll<{
   id: string;
   title: string;
   description: string | null;
@@ -85,7 +81,16 @@ const rows = D.query(
   rarity_score: number;
   url: string | null;
   source_name: string;
-}>;
+}>(
+  `SELECT e.id, e.title, e.description, e.starts_at, e.ends_at,
+          e.venue_name, e.venue_address, e.venue_lat, e.venue_lng,
+          e.category, e.rarity_score, e.url, s.name AS source_name
+   FROM events e JOIN sources s ON s.id = e.source_id
+   WHERE e.city_id = (SELECT id FROM cities WHERE slug = ?)
+     AND e.starts_at >= ? AND e.starts_at < ?
+   ORDER BY e.starts_at ASC`,
+  [city.slug, now.toISOString(), horizon.toISOString()],
+);
 
 console.log(`Loaded ${rows.length} events for ${city.name} (${days}d). Scoring…`);
 

@@ -15,7 +15,7 @@ const QuerySchema = z.object({
 
 export const events = new Hono();
 
-events.get("/", (c) => {
+events.get("/", async (c) => {
   const parsed = QuerySchema.safeParse(c.req.query());
   if (!parsed.success) {
     return c.json({ error: "invalid_query", details: parsed.error.flatten() }, 400);
@@ -31,13 +31,13 @@ events.get("/", (c) => {
     bbox = parts as [number, number, number, number];
   }
 
-  const rows = listEvents({
+  const rows = await listEvents({
     citySlug: q.city,
     from: q.from,
     to: q.to,
-    categories: q.category?.split(",").map((s) => s.trim()).filter(Boolean),
-    minRarity: q.min_rarity,
-    bbox,
+    ...(q.category ? { categories: q.category.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+    ...(q.min_rarity !== undefined ? { minRarity: q.min_rarity } : {}),
+    ...(bbox ? { bbox } : {}),
     limit: q.limit + 1, // fetch one extra to detect next page
     offset: q.cursor,
   });
@@ -51,9 +51,9 @@ events.get("/", (c) => {
   });
 });
 
-events.get("/:id", (c) => {
+events.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const row = getEventById(id);
+  const row = await getEventById(id);
   if (!row) return c.json({ error: "not_found" }, 404);
   return c.json({ event: serializeEvent(row) });
 });

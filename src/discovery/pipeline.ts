@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db } from "../db/index.ts";
+import { exec, queryAll, queryGet } from "../db/index.ts";
 import { fetchGraphqlApi } from "./fetchers/graphql-api.ts";
 import { fetchIcal } from "./fetchers/ical.ts";
 import { fetchJsonApi } from "./fetchers/json-api.ts";
@@ -44,10 +44,10 @@ export interface RunPipelineOpts {
 }
 
 export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
-  const D = db();
-  const city = D.query("SELECT * FROM cities WHERE slug = ?").get(opts.citySlug) as
-    | CityRecord
-    | null;
+  const city = await queryGet<CityRecord>(
+    "SELECT * FROM cities WHERE slug = ?",
+    [opts.citySlug],
+  );
   if (!city) throw new Error(`unknown city slug: ${opts.citySlug}`);
 
   const windowDays = opts.windowDays ?? 14;
@@ -56,7 +56,7 @@ export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
   const windowEndsAt = new Date(windowStartsAt);
   windowEndsAt.setDate(windowEndsAt.getDate() + windowDays);
 
-  const sources = loadSources(city.id, opts);
+  const sources = await loadSources(city.id, opts);
   const fetchOpts: FetchOpts = { city, windowStartsAt, windowEndsAt };
 
   const summary: RunSummary = {
@@ -70,7 +70,7 @@ export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
   for (const source of sources) {
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
-    D.run(
+    await exec(
       `INSERT INTO source_runs (id, source_id, started_at, status) VALUES (?, ?, ?, 'running')`,
       [runId, source.id, startedAt],
     );
@@ -78,11 +78,11 @@ export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
     const outcome = await runOneSource(source, fetchOpts);
     const upsertResult =
       outcome.status === "ok" && outcome.events.length > 0
-        ? upsertEvents(city.id, source.id, outcome.events)
+        ? await upsertEvents(city.id, source.id, outcome.events)
         : { found: outcome.events.length, inserted: 0 };
 
     const finishedAt = new Date().toISOString();
-    D.run(
+    await exec(
       `UPDATE source_runs
          SET finished_at = ?, events_found = ?, events_new = ?, tokens_used = ?,
              cost_usd = ?, model_used = ?, status = ?, error = ?
@@ -99,12 +99,10 @@ export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
         runId,
       ],
     );
-    D.run(`UPDATE sources SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?`, [
-      finishedAt,
-      outcome.status,
-      finishedAt,
-      source.id,
-    ]);
+    await exec(
+      `UPDATE sources SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?`,
+      [finishedAt, outcome.status, finishedAt, source.id],
+    );
 
     summary.sources.push({
       source_id: source.id,
@@ -126,10 +124,9 @@ export async function runPipeline(opts: RunPipelineOpts): Promise<RunSummary> {
   return summary;
 }
 
-function loadSources(cityId: string, opts: RunPipelineOpts): SourceRecord[] {
-  const D = db();
+async function loadSources(cityId: string, opts: RunPipelineOpts): Promise<SourceRecord[]> {
   const filters: string[] = ["city_id = ?", "enabled = 1"];
-  const args: unknown[] = [cityId];
+  const args: Array<string | number> = [cityId];
 
   if (opts.tier !== "all" && opts.tier !== undefined) {
     filters.push("tier = ?");
@@ -140,9 +137,10 @@ function loadSources(cityId: string, opts: RunPipelineOpts): SourceRecord[] {
     args.push(...opts.sourceIds);
   }
 
-  return D.query(`SELECT * FROM sources WHERE ${filters.join(" AND ")} ORDER BY tier, name`).all(
-    ...(args as never[]),
-  ) as SourceRecord[];
+  return queryAll<SourceRecord>(
+    `SELECT * FROM sources WHERE ${filters.join(" AND ")} ORDER BY tier, name`,
+    args,
+  );
 }
 
 async function runOneSource(source: SourceRecord, opts: FetchOpts): Promise<FetchOutcome> {

@@ -3,8 +3,8 @@ import { listCities } from "../db/queries.ts";
 
 export const cities = new Hono();
 
-cities.get("/", (c) => {
-  const rows = listCities();
+cities.get("/", async (c) => {
+  const rows = await listCities();
   return c.json({
     cities: rows.map((r) => ({
       slug: r.slug,

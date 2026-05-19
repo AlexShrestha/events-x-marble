@@ -3,19 +3,14 @@
  *
  * Intentionally minimal — does NOT insert any sample events. A fresh checkout
  * runs this once, then populates real events via `bun run pipeline`.
- *
- * For deployment-specific sample data (your own taste-flavored fixtures),
- * create a `scripts/seed-local.ts` (gitignored under `*.local.ts`).
  */
 
 import { randomUUID } from "node:crypto";
-import { applySchema, closeDb, db } from "./index.ts";
+import { applySchema, closeDb, exec, queryGet } from "./index.ts";
 
-applySchema();
+await applySchema();
 
-const D = db();
-
-const cityId = upsertCity({
+const cityId = await upsertCity({
   slug: "barcelona",
   name: "Barcelona",
   country_code: "ES",
@@ -24,8 +19,7 @@ const cityId = upsertCity({
   centroid: [2.154, 41.39],
 });
 
-// One generic Tier 0 source as a smoke-test target: Spanish national holidays.
-upsertSource({
+await upsertSource({
   city_id: cityId,
   kind: "feed",
   name: "Spain national holidays (Google iCal)",
@@ -34,25 +28,28 @@ upsertSource({
   config: { format: "ical", category: "holiday", rarity_score: 0.4 },
 });
 
-console.log("Seeded city=barcelona + one Tier 0 holidays source. Run `bun run pipeline --city barcelona --tier 0` to ingest.");
+console.log(
+  "Seeded city=barcelona + one Tier 0 holidays source. Run `bun run pipeline --city barcelona --tier 0` to ingest.",
+);
 closeDb();
 
 // --- helpers (exported so local/opt-in seed scripts can reuse) ---
 
-export function upsertCity(input: {
+export async function upsertCity(input: {
   slug: string;
   name: string;
   country_code: string;
   timezone: string;
   bbox: [number, number, number, number];
   centroid: [number, number];
-}): string {
-  const existing = D.query("SELECT id FROM cities WHERE slug = ?").get(input.slug) as
-    | { id: string }
-    | null;
+}): Promise<string> {
+  const existing = await queryGet<{ id: string }>(
+    "SELECT id FROM cities WHERE slug = ?",
+    [input.slug],
+  );
   if (existing) return existing.id;
   const id = randomUUID();
-  D.run(
+  await exec(
     `INSERT INTO cities (id, slug, name, country_code, timezone,
       bbox_min_lng, bbox_min_lat, bbox_max_lng, bbox_max_lat,
       centroid_lng, centroid_lat)
@@ -74,7 +71,7 @@ export function upsertCity(input: {
   return id;
 }
 
-export function upsertSource(input: {
+export async function upsertSource(input: {
   city_id: string;
   kind: "feed" | "api" | "scrape" | "web_search";
   name: string;
@@ -82,14 +79,14 @@ export function upsertSource(input: {
   tier: 0 | 1 | 2;
   enabled?: boolean;
   config?: Record<string, unknown>;
-}): string {
-  const existing = D.query("SELECT id FROM sources WHERE city_id = ? AND name = ?").get(
-    input.city_id,
-    input.name,
-  ) as { id: string } | null;
+}): Promise<string> {
+  const existing = await queryGet<{ id: string }>(
+    "SELECT id FROM sources WHERE city_id = ? AND name = ?",
+    [input.city_id, input.name],
+  );
   if (existing) return existing.id;
   const id = randomUUID();
-  D.run(
+  await exec(
     `INSERT INTO sources (id, city_id, kind, name, url, tier, enabled, config)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [

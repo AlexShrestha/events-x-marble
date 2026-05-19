@@ -32,18 +32,12 @@ const EnvSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   SMTP_TO: z.string().email().optional(),
+
+  // Turso (libSQL) for the hosted Vercel deploy. Absence → falls back to file:./data.db.
+  TURSO_URL: z.string().optional(),
+  TURSO_AUTH_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
 
 export const env: Env = EnvSchema.parse(process.env);
-
-export function sqlitePath(): string {
-  const url = env.DATABASE_URL;
-  if (!url.startsWith("sqlite://")) {
-    throw new Error(
-      `DATABASE_URL must start with sqlite:// for v1 (got: ${url.slice(0, 12)}...). Postgres support arrives when we move to Supabase.`,
-    );
-  }
-  return url.slice("sqlite://".length);
-}

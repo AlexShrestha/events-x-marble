@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { applySchema, db } from "../db/index.ts";
+import { applySchema, queryGet } from "../db/index.ts";
 import { scoutSources } from "./scout.ts";
 import { verifyTelegram, verifyWebsite } from "./verify.ts";
 import { persistCandidates } from "./persist.ts";
@@ -19,11 +19,12 @@ if (!values.city || !values.interest) {
   process.exit(2);
 }
 
-applySchema();
+await applySchema();
 
-const cityRow = db()
-  .query("SELECT slug, name, country_code FROM cities WHERE slug = ?")
-  .get(values.city) as { slug: string; name: string; country_code: string } | null;
+const cityRow = await queryGet<{ slug: string; name: string; country_code: string }>(
+  "SELECT slug, name, country_code FROM cities WHERE slug = ?",
+  [values.city],
+);
 if (!cityRow) {
   console.error(`Unknown city: ${values.city}. Seed it first.`);
   process.exit(2);
@@ -53,7 +54,7 @@ const verified: VerifiedCandidate[] = [];
 for (const c of result.candidates) {
   const outcome =
     c.kind === "telegram" ? await verifyTelegram(c.url) : await verifyWebsite(c.url);
-  verified.push({ ...c, verified: outcome.ok, verify_error: outcome.error });
+  verified.push({ ...c, verified: outcome.ok, ...(outcome.error ? { verify_error: outcome.error } : {}) });
   const mark = outcome.ok ? "✓" : "✗";
   const errSuffix = outcome.ok ? "" : `  — ${outcome.error}`;
   console.log(
@@ -71,7 +72,7 @@ if (values["dry-run"]) {
   process.exit(0);
 }
 
-const summary = persistCandidates(values.city, verified, { interest: values.interest });
+const summary = await persistCandidates(values.city, verified, { interest: values.interest });
 console.log(
   `Persisted: added=${summary.added}, skipped_unverified=${summary.skipped_unverified}, skipped_existing=${summary.skipped_existing}`,
 );

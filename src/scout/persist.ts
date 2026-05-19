@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db } from "../db/index.ts";
+import { exec, queryGet } from "../db/index.ts";
 import { extractTelegramHandle, telegramPublicViewUrl } from "./verify.ts";
 import type { VerifiedCandidate } from "./types.ts";
 
@@ -10,24 +10,16 @@ export interface PersistSummary {
   total: number;
 }
 
-export function persistCandidates(
+export async function persistCandidates(
   citySlug: string,
   candidates: VerifiedCandidate[],
   opts: { interest: string },
-): PersistSummary {
-  const D = db();
-  const city = D.query("SELECT id FROM cities WHERE slug = ?").get(citySlug) as
-    | { id: string }
-    | null;
+): Promise<PersistSummary> {
+  const city = await queryGet<{ id: string }>(
+    "SELECT id FROM cities WHERE slug = ?",
+    [citySlug],
+  );
   if (!city) throw new Error(`unknown city slug: ${citySlug}`);
-
-  const insert = D.prepare(
-    `INSERT OR IGNORE INTO sources (id, city_id, kind, name, url, tier, enabled, config)
-     VALUES (?, ?, 'scrape', ?, ?, 1, 0, ?)`,
-  );
-  const existsByUrl = D.prepare(
-    `SELECT id FROM sources WHERE city_id = ? AND (url = ? OR url = ?)`,
-  );
 
   let added = 0;
   let skippedUnverified = 0;
@@ -47,7 +39,10 @@ export function persistCandidates(
           })()
         : c.url;
 
-    const existing = existsByUrl.get(city.id, finalUrl, c.url) as { id: string } | null;
+    const existing = await queryGet<{ id: string }>(
+      `SELECT id FROM sources WHERE city_id = ? AND (url = ? OR url = ?)`,
+      [city.id, finalUrl, c.url],
+    );
     if (existing) {
       skippedExisting++;
       continue;
@@ -66,7 +61,11 @@ export function persistCandidates(
       scouted_at: new Date().toISOString(),
     };
 
-    insert.run(randomUUID(), city.id, c.name, finalUrl, JSON.stringify(config));
+    await exec(
+      `INSERT OR IGNORE INTO sources (id, city_id, kind, name, url, tier, enabled, config)
+       VALUES (?, ?, 'scrape', ?, ?, 1, 0, ?)`,
+      [randomUUID(), city.id, c.name, finalUrl, JSON.stringify(config)],
+    );
     added++;
   }
 

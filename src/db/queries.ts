@@ -1,4 +1,4 @@
-import { db } from "./index.ts";
+import { queryAll, queryGet } from "./index.ts";
 
 export interface City {
   id: string;
@@ -36,14 +36,12 @@ export interface EventRow {
   source_name: string;
 }
 
-export function listCities(): City[] {
-  return db().query("SELECT * FROM cities ORDER BY name").all() as City[];
+export async function listCities(): Promise<City[]> {
+  return queryAll<City>("SELECT * FROM cities ORDER BY name");
 }
 
-export function getCityBySlug(slug: string): City | null {
-  return (db()
-    .query("SELECT * FROM cities WHERE slug = ?")
-    .get(slug) ?? null) as City | null;
+export async function getCityBySlug(slug: string): Promise<City | null> {
+  return queryGet<City>("SELECT * FROM cities WHERE slug = ?", [slug]);
 }
 
 export interface ListEventsParams {
@@ -57,9 +55,9 @@ export interface ListEventsParams {
   offset: number;
 }
 
-export function listEvents(params: ListEventsParams): EventRow[] {
+export async function listEvents(params: ListEventsParams): Promise<EventRow[]> {
   const where: string[] = ["c.slug = ?", "e.starts_at >= ?", "e.starts_at < ?"];
-  const args: unknown[] = [params.citySlug, params.from, params.to];
+  const args: Array<string | number> = [params.citySlug, params.from, params.to];
 
   if (params.categories && params.categories.length > 0) {
     const placeholders = params.categories.map(() => "?").join(",");
@@ -85,15 +83,15 @@ export function listEvents(params: ListEventsParams): EventRow[] {
     LIMIT ? OFFSET ?
   `;
   args.push(params.limit, params.offset);
-  return db().query(sql).all(...(args as never[])) as EventRow[];
+  return queryAll<EventRow>(sql, args);
 }
 
-export function getEventById(id: string): EventRow | null {
+export async function getEventById(id: string): Promise<EventRow | null> {
   const sql = `
     SELECT e.*, s.name AS source_name
     FROM events e
     JOIN sources s ON s.id = e.source_id
     WHERE e.id = ?
   `;
-  return (db().query(sql).get(id) ?? null) as EventRow | null;
+  return queryGet<EventRow>(sql, [id]);
 }

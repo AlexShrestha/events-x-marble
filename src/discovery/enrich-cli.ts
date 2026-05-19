@@ -10,7 +10,7 @@ const { values } = parseArgs({
   allowPositionals: false,
 });
 
-applySchema();
+await applySchema();
 
 const limit = values.limit ? Number(values.limit) : undefined;
 const dryRun = values["dry-run"] ?? false;

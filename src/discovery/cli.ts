@@ -16,7 +16,7 @@ if (!values.city) {
   process.exit(2);
 }
 
-applySchema();
+await applySchema();
 
 const tierVal = values.tier;
 const tier: 0 | 1 | 2 | "all" =

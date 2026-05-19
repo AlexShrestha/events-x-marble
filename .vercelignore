@@ -1,0 +1,17 @@
+# Don't ship local-dev artifacts to Vercel.
+data.db
+data.db-journal
+data.db-wal
+data.db-shm
+*.log
+/tmp/
+
+# launchd plist (local automation only)
+scripts/install-launchd.sh
+scripts/weekly-digest.sh
+
+# Tests, plans, dev notes
+test/
+docs/
+*.local.ts
+*.local.json

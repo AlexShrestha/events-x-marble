@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { env } from "../env.ts";
-import { db } from "../db/index.ts";
+import { queryAll, queryGet } from "../db/index.ts";
 import {
   foldLine,
   icsEscape,
@@ -64,12 +64,16 @@ meIcsApp.get("/", async (c) => {
   }
 
   // Fetch city + events.
-  const D = db();
-  const city = D.query(
+  const city = await queryGet<{
+    slug: string;
+    name: string;
+    timezone: string;
+    centroid_lng: number | null;
+    centroid_lat: number | null;
+  }>(
     "SELECT slug, name, timezone, centroid_lng, centroid_lat FROM cities WHERE slug = ?",
-  ).get(q.city) as
-    | { slug: string; name: string; timezone: string; centroid_lng: number | null; centroid_lat: number | null }
-    | null;
+    [q.city],
+  );
   if (!city) return c.text(`unknown city: ${q.city}`, 404);
 
   const now = new Date();
@@ -82,15 +86,7 @@ meIcsApp.get("/", async (c) => {
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
     result = hit.result;
   } else {
-    const rows = D.query(
-      `SELECT e.id, e.title, e.description, e.starts_at, e.ends_at,
-              e.venue_name, e.venue_address, e.venue_lat, e.venue_lng,
-              e.category, e.rarity_score, e.url, s.name AS source_name
-       FROM events e JOIN sources s ON s.id = e.source_id
-       WHERE e.city_id = (SELECT id FROM cities WHERE slug = ?)
-         AND e.starts_at >= ? AND e.starts_at < ?
-       ORDER BY e.starts_at ASC`,
-    ).all(q.city, now.toISOString(), horizon.toISOString()) as Array<{
+    const rows = await queryAll<{
       id: string;
       title: string;
       description: string | null;
@@ -104,7 +100,16 @@ meIcsApp.get("/", async (c) => {
       rarity_score: number;
       url: string | null;
       source_name: string;
-    }>;
+    }>(
+      `SELECT e.id, e.title, e.description, e.starts_at, e.ends_at,
+              e.venue_name, e.venue_address, e.venue_lat, e.venue_lng,
+              e.category, e.rarity_score, e.url, s.name AS source_name
+       FROM events e JOIN sources s ON s.id = e.source_id
+       WHERE e.city_id = (SELECT id FROM cities WHERE slug = ?)
+         AND e.starts_at >= ? AND e.starts_at < ?
+       ORDER BY e.starts_at ASC`,
+      [q.city, now.toISOString(), horizon.toISOString()],
+    );
 
     if (rows.length === 0) {
       return c.text(emptyCalendar(q.city, tzForCity(q.city)), 200, calHeaders());

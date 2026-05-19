@@ -4,7 +4,7 @@
  * Results (including not-found) are cached in geocode_cache to avoid re-querying.
  */
 
-import { db } from "../db/index.ts";
+import { exec, queryGet } from "../db/index.ts";
 import { getUserAgent } from "./user-agent.ts";
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
@@ -59,12 +59,11 @@ export async function geocodeVenue(
   const key = normaliseKey(venueName, citySlug);
 
   // Check cache first (a null result is stored as display='not_found').
-  const cached = db()
-    .query<
-      { lat: number | null; lng: number | null; display: string | null },
-      [string]
-    >("SELECT lat, lng, display FROM geocode_cache WHERE key = ?")
-    .get(key);
+  const cached = await queryGet<{
+    lat: number | null;
+    lng: number | null;
+    display: string | null;
+  }>("SELECT lat, lng, display FROM geocode_cache WHERE key = ?", [key]);
 
   if (cached !== null) {
     if (cached.display === NOT_FOUND_SENTINEL) return null;
@@ -94,7 +93,7 @@ export async function geocodeVenue(
     } else {
       const hits = (await res.json()) as NominatimHit[];
       if (hits.length > 0) {
-        const hit = hits[0];
+        const hit = hits[0]!;
         result = {
           lat: parseFloat(hit.lat),
           lng: parseFloat(hit.lon),
@@ -107,17 +106,16 @@ export async function geocodeVenue(
   }
 
   // Cache the result — including not-found — so we don't re-query.
-  db()
-    .query(
-      `INSERT OR REPLACE INTO geocode_cache (key, lat, lng, display)
-       VALUES (?, ?, ?, ?)`,
-    )
-    .run(
+  await exec(
+    `INSERT OR REPLACE INTO geocode_cache (key, lat, lng, display)
+     VALUES (?, ?, ?, ?)`,
+    [
       key,
       result?.lat ?? null,
       result?.lng ?? null,
       result ? result.display : NOT_FOUND_SENTINEL,
-    );
+    ],
+  );
 
   return result;
 }

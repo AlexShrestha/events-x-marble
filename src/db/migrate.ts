@@ -1,6 +1,5 @@
-import { applySchema, closeDb } from "./index.ts";
-import { sqlitePath } from "../env.ts";
+import { applySchema, closeDb, libsqlConfig } from "./index.ts";
 
-applySchema();
-console.log(`Schema applied to ${sqlitePath()}`);
+await applySchema();
+console.log(`Schema applied via libsql to ${libsqlConfig().url}`);
 closeDb();

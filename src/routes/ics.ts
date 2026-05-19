@@ -167,7 +167,7 @@ const IcsQuerySchema = z.object({
   bbox: z.string().optional(),
 });
 
-icsApp.get("/", (c) => {
+icsApp.get("/", async (c) => {
   const parsed = IcsQuerySchema.safeParse(c.req.query());
   if (!parsed.success) {
     return c.text("invalid query: " + JSON.stringify(parsed.error.flatten()), 400);
@@ -192,13 +192,13 @@ icsApp.get("/", (c) => {
     }
   }
 
-  const rows = listEvents({
+  const rows = await listEvents({
     citySlug: q.city,
     from,
     to,
-    categories: q.category?.split(",").map((s) => s.trim()).filter(Boolean),
-    minRarity: q.min_rarity,
-    bbox,
+    ...(q.category ? { categories: q.category.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+    ...(q.min_rarity !== undefined ? { minRarity: q.min_rarity } : {}),
+    ...(bbox ? { bbox } : {}),
     limit: 2000,
     offset: 0,
   });

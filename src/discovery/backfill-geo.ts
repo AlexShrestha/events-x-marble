@@ -8,7 +8,7 @@
  */
 
 import { parseArgs } from "node:util";
-import { applySchema, db } from "../db/index.ts";
+import { applySchema, exec, queryAll } from "../db/index.ts";
 import { getCityBySlug } from "../db/queries.ts";
 import { geocodeVenue } from "../lib/geocode.ts";
 
@@ -21,15 +21,13 @@ const { values } = parseArgs({
 });
 
 if (!values.city) {
-  console.error(
-    "Usage: bun run geocode --city <slug> [--limit <n>]",
-  );
+  console.error("Usage: bun run geocode --city <slug> [--limit <n>]");
   process.exit(2);
 }
 
-applySchema();
+await applySchema();
 
-const city = getCityBySlug(values.city);
+const city = await getCityBySlug(values.city);
 if (!city) {
   console.error(`City not found: ${values.city}`);
   process.exit(1);
@@ -46,17 +44,16 @@ interface EventStub {
   venue_name: string;
 }
 
-const events = db()
-  .query<EventStub, [string, number]>(
-    `SELECT id, venue_name
-     FROM events
-     WHERE city_id = (SELECT id FROM cities WHERE slug = ?)
-       AND venue_lat IS NULL
-       AND venue_name IS NOT NULL
-       AND venue_name <> ''
-     LIMIT ?`,
-  )
-  .all(city.slug, limitN);
+const events = await queryAll<EventStub>(
+  `SELECT id, venue_name
+   FROM events
+   WHERE city_id = (SELECT id FROM cities WHERE slug = ?)
+     AND venue_lat IS NULL
+     AND venue_name IS NOT NULL
+     AND venue_name <> ''
+   LIMIT ?`,
+  [city.slug, limitN],
+);
 
 console.log(
   `[backfill-geo] ${events.length} events need geocoding in ${city.name}`,
@@ -73,13 +70,12 @@ for (const event of events) {
   const result = await geocodeVenue(event.venue_name, city.slug, hint);
 
   if (result) {
-    db()
-      .query(
-        `UPDATE events
-         SET venue_lat = ?, venue_lng = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-      )
-      .run(result.lat, result.lng, event.id);
+    await exec(
+      `UPDATE events
+       SET venue_lat = ?, venue_lng = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      [result.lat, result.lng, event.id],
+    );
 
     hits++;
     geocoded.push({

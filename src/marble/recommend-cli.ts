@@ -8,7 +8,7 @@
  * Does NOT write to data.db. Does NOT cache scores. Does NOT touch the KG file.
  */
 import { parseArgs } from "node:util";
-import { applySchema, db, closeDb } from "../db/index.ts";
+import { applySchema, closeDb, queryAll, queryGet } from "../db/index.ts";
 import { env } from "../env.ts";
 import { scoreEventsForUser, type EventForScoring } from "./scorer.ts";
 
@@ -31,11 +31,10 @@ if (!env.MARBLE_KG_PATH) {
   process.exit(2);
 }
 
-applySchema();
+await applySchema();
 
 const days = values.days ? Number(values.days) : 7;
 const threshold = values.threshold ? Number(values.threshold) : 0.85;
-const D = db();
 
 interface CityRow {
   slug: string;
@@ -44,9 +43,10 @@ interface CityRow {
   centroid_lng: number | null;
   centroid_lat: number | null;
 }
-const city = D.query(
+const city = await queryGet<CityRow>(
   "SELECT slug, name, timezone, centroid_lng, centroid_lat FROM cities WHERE slug = ?",
-).get(values.city) as CityRow | null;
+  [values.city],
+);
 if (!city) {
   console.error(`Unknown city: ${values.city}`);
   process.exit(2);
@@ -63,21 +63,26 @@ interface EventDbRow {
   starts_at: string;
   ends_at: string | null;
   venue_name: string | null;
+  venue_address: string | null;
+  venue_lat: number | null;
+  venue_lng: number | null;
   category: string | null;
   rarity_score: number;
   url: string | null;
   source_name: string;
 }
 
-const rows = D.query(
+const rows = await queryAll<EventDbRow>(
   `SELECT e.id, e.title, e.description, e.starts_at, e.ends_at,
-          e.venue_name, e.category, e.rarity_score, e.url,
+          e.venue_name, e.venue_address, e.venue_lat, e.venue_lng,
+          e.category, e.rarity_score, e.url,
           s.name AS source_name
    FROM events e JOIN sources s ON s.id = e.source_id
    WHERE e.city_id = (SELECT id FROM cities WHERE slug = ?)
      AND e.starts_at >= ? AND e.starts_at < ?
    ORDER BY e.starts_at ASC`,
-).all(city.slug, now.toISOString(), horizon.toISOString()) as EventDbRow[];
+  [city.slug, now.toISOString(), horizon.toISOString()],
+);
 
 console.log(
   `Loaded ${rows.length} upcoming events for ${city.name} (${days}-day window). Scoring with Marble KG…`,
@@ -96,6 +101,9 @@ const events: EventForScoring[] = rows.map((r) => ({
   starts_at: r.starts_at,
   ends_at: r.ends_at,
   venue_name: r.venue_name,
+  venue_address: r.venue_address,
+  venue_lat: r.venue_lat,
+  venue_lng: r.venue_lng,
   category: r.category,
   rarity_score: r.rarity_score,
   source: r.source_name,
@@ -109,7 +117,7 @@ const centroid: [number, number] | null =
 
 const result = await scoreEventsForUser(events, {
   city: { name: city.name, centroid, timezone: city.timezone },
-  notes: values.notes,
+  ...(values.notes ? { notes: values.notes } : {}),
   threshold,
   ...(values.model ? { model: values.model } : {}),
 });

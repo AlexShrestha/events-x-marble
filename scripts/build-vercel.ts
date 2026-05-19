@@ -9,12 +9,19 @@ import { build } from "esbuild";
 import { rmSync, existsSync } from "node:fs";
 
 // Clean any prior output so Vercel sees only the bundled artifact.
+// Catch-all filename: Vercel's pattern for "every URL → this function".
+const OUT = "api/[...path].mjs";
+const MAP = "api/[...path].mjs.map";
+if (existsSync(OUT)) rmSync(OUT);
+if (existsSync(MAP)) rmSync(MAP);
 if (existsSync("api/index.mjs")) rmSync("api/index.mjs");
 if (existsSync("api/index.mjs.map")) rmSync("api/index.mjs.map");
+if (existsSync("api/[[...path]].mjs")) rmSync("api/[[...path]].mjs");
+if (existsSync("api/[[...path]].mjs.map")) rmSync("api/[[...path]].mjs.map");
 
 const result = await build({
   entryPoints: ["src/vercel-entry.ts"],
-  outfile: "api/index.mjs",
+  outfile: OUT,
   bundle: true,
   platform: "node",
   target: "node22",

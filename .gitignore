@@ -31,6 +31,10 @@ local/
 .DS_Store
 .vercel
 
-# --- Vercel build artifacts (esbuild bundles api/index.ts → api/index.mjs)
+# --- Vercel build artifacts (esbuild bundles src/vercel-entry.ts)
+api/[...path].mjs
+api/[...path].mjs.map
+api/[[...path]].mjs
+api/[[...path]].mjs.map
 api/index.mjs
 api/index.mjs.map

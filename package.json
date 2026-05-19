@@ -12,6 +12,7 @@
     "scout": "bun src/scout/cli.ts",
     "enrich": "bun src/discovery/enrich-cli.ts",
     "recommend": "bun src/marble/recommend-cli.ts",
+    "deliver": "bun src/marble/deliver-cli.ts",
     "research:deep": "bun src/research/deep.ts",
     "typecheck": "bunx tsc --noEmit",
     "geocode": "bun src/discovery/backfill-geo.ts",

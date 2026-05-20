@@ -23,6 +23,13 @@
  *                           (no prompt; install script defaults to this so /me
  *                           lands on real picks instead of an empty dashboard)
  *   --no-first-run          skip the first scoring run (no prompt)
+ *   --build-from PATH       BLACK-BOX MARBLE: if no marble KG exists at
+ *                           --kg-path yet, build one from PATH (chat export,
+ *                           journal, episodes JSON). Reports 'ingesting' +
+ *                           'learning' state to the server while marble runs.
+ *   --kg-format chat|episodes|text|auto
+ *                           override format detection for --build-from.
+ *                           Default: auto (peeks at the file extension + content).
  *   --dry-run               do everything except the registration POST
  *   --connect-session ID    Browser-handshake id from /api/v1/connect/new —
  *                           passed through register() so the polling browser
@@ -68,8 +75,12 @@ export async function run(args) {
   // --- 1. LLM provider + key env var
   const { provider, llmApiKeyEnv } = await pickProvider(flags);
 
-  // --- 2. KG path (Pass A: assume an existing file; Pass B will replace this)
-  const kgPath = await pickKgPath(flags);
+  // --- 2. KG path. Two modes:
+  //   - Pass A path: existing marble-kg.json file (default location, $MARBLE_STORAGE, or cwd)
+  //   - Pass B path: --build-from <data>  → KG will be built; default path is
+  //     ~/.events-x-marble/marble-kg.json and doesn't need to exist yet.
+  const buildingFromData = Boolean(flags["build-from"]);
+  const kgPath = await pickKgPath(flags, buildingFromData);
 
   // --- 3. City + display name
   const citySlug = flags.city
@@ -140,7 +151,14 @@ export async function run(args) {
   // The browser tab on /connect is polling /api/v1/me/status via the connect
   // /status endpoint — every state change below shows up there in real time.
   if (!flags["dry-run"]) {
-    await verifyPreflight({ cfg, kgPath, llmApiKeyEnv });
+    await verifyPreflight({
+      cfg,
+      kgPath,
+      llmApiKeyEnv,
+      // Pass B: optional black-box marble bootstrap.
+      buildFrom: flags["build-from"] ?? undefined,
+      kgFormat: flags["kg-format"] ?? undefined,
+    });
   }
 
   if (!flags["no-cron"] && !flags["dry-run"]) {
@@ -185,12 +203,21 @@ export async function run(args) {
 
 /**
  * After register + saveConfig, verify the pre-flight requirements and report
- * state to the server. The website's /connect polling shows these states live:
- *   - key_missing → user sees "set $XXX_API_KEY in your shell and re-run"
- *   - kg_missing  → user sees "we couldn't find your marble KG" (Pass B will offer to build)
- *   - ready       → site auto-redirects to /me
+ * state to the server. The website's /connect polling shows these states live.
+ *
+ * Pass B: if KG doesn't exist AND `buildFrom` (a data file path) was provided,
+ * we build the KG black-box via marble's library API and report 'ingesting'
+ * then 'learning' state along the way.
+ *
+ * States surfaced:
+ *   - key_missing  → user sees "set $XXX_API_KEY in your shell and re-run"
+ *   - kg_missing   → user sees "we couldn't find your marble KG" (no --build-from passed)
+ *   - ingesting    → marble.ingestConversations/Episodes running
+ *   - learning     → marble.learn() running
+ *   - ready        → site auto-redirects to /me
+ *   - error        → with appropriate category
  */
-async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv }) {
+async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv, buildFrom, kgFormat }) {
   // 1. API key must be set in the user's env right now.
   if (!process.env[llmApiKeyEnv]) {
     const msg = `${llmApiKeyEnv} is not set in your shell — export it and re-run \`events-x-marble run\`.`;
@@ -199,12 +226,39 @@ async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv }) {
     return;
   }
 
-  // 2. KG file must exist + parse as a marble user object.
+  // 2. KG file: if it doesn't exist, optionally build one from a data file
+  //    (chat export / journal / etc.) via marble — entirely black-box.
   if (!existsSync(kgPath)) {
-    const msg = `marble KG file not found at ${kgPath}. Build one with marble, or run \`events-x-marble add-data <path>\` (Pass B — coming soon).`;
-    process.stderr.write(`\n! ${msg}\n`);
-    await report({ cfg, state: "kg_missing", message: msg });
-    return;
+    if (!buildFrom) {
+      const msg = `marble KG not found at ${kgPath} — pass --build-from <data-file> to build one from your data, or point --kg-path at an existing file.`;
+      process.stderr.write(`\n! ${msg}\n`);
+      await report({ cfg, state: "kg_missing", message: msg });
+      return;
+    }
+    try {
+      const { buildKgFromFile } = await import("./marble-build.mjs");
+      process.stderr.write(`\nbuilding KG from ${buildFrom}…\n`);
+      process.stderr.write("  (this can take 2–5 minutes; the browser tab is showing live progress)\n");
+      const { summary } = await buildKgFromFile({
+        cfg,
+        kgPath,
+        dataPath: buildFrom,
+        format: kgFormat ?? "auto",
+      });
+      process.stderr.write(`\n✓ KG built (${summary})\n`);
+      await report({ cfg, state: "ready", message: `kg built (${summary})` });
+      return;
+    } catch (e) {
+      const msg = `KG build failed: ${e.message ?? e}`;
+      process.stderr.write(`\n✗ ${msg}\n`);
+      const cat = /learn/i.test(msg)
+        ? "learn_failed"
+        : /ingest|episode|conversation/i.test(msg)
+          ? "ingest_failed"
+          : "unknown";
+      await report({ cfg, state: "error", message: msg, errorCategory: cat });
+      throw e;
+    }
   }
 
   try {
@@ -266,7 +320,7 @@ async function pickProvider(flags) {
   return { provider, llmApiKeyEnv };
 }
 
-async function pickKgPath(flags) {
+async function pickKgPath(flags, buildingFromData = false) {
   if (flags["kg-path"]) return expandHome(flags["kg-path"]);
 
   const candidates = [
@@ -284,12 +338,19 @@ async function pickKgPath(flags) {
     }
   }
 
+  // Pass B: when --build-from is provided, we don't need an existing file —
+  // marble will create one at the default location.
+  if (buildingFromData) {
+    process.stderr.write(
+      `\n--build-from passed → will build a fresh marble KG at ${DEFAULT_KG_PATH}\n`,
+    );
+    return DEFAULT_KG_PATH;
+  }
+
   process.stderr.write(
     "\nno existing marble KG detected.\n" +
-      "  Pass A note: this CLI currently expects an existing marble-kg.json.\n" +
-      "  The next release (Pass B) will let you build one from scratch via\n" +
-      `  marble's ingest+learn flow under the hood, written to ${DEFAULT_KG_PATH}.\n` +
-      "  For now, point us at an existing file:\n",
+      "  Option A: point us at an existing marble-kg.json file (--kg-path)\n" +
+      "  Option B: build one from your data file (--build-from <path>)\n",
   );
   const p = await ask("path to your marble-kg.json", {
     validate: (v) => {

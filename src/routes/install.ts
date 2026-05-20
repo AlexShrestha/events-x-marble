@@ -140,15 +140,37 @@ if [ -t 0 ]; then
 elif [ -e /dev/tty ]; then
   STDIN_SRC=/dev/tty
 else
-  warn "no controllable terminal detected — passing --no-prompts to init"
+  warn "no controllable terminal detected — falling back to /dev/null"
   STDIN_SRC=/dev/null
+fi
+
+# ---- Pass B: env-var pass-through for non-interactive setups -------------
+# These let the user pre-set their answers via env vars instead of prompts,
+# useful for \`EXM_BUILD_FROM=/path/to/data.json curl ... | bash\`.
+EXTRA_ARGS=()
+if [ -n "\${EXM_BUILD_FROM:-}" ]; then
+  if [ ! -e "\${EXM_BUILD_FROM}" ]; then
+    die "\$EXM_BUILD_FROM points at a missing file: \${EXM_BUILD_FROM}"
+  fi
+  EXTRA_ARGS+=(--build-from "\${EXM_BUILD_FROM}")
+  say "will build a fresh marble KG from \${EXM_BUILD_FROM}"
+fi
+if [ -n "\${EXM_KG_FORMAT:-}" ]; then
+  EXTRA_ARGS+=(--kg-format "\${EXM_KG_FORMAT}")
+fi
+if [ -n "\${EXM_CITY:-}" ]; then
+  EXTRA_ARGS+=(--city "\${EXM_CITY}")
+fi
+if [ -n "\${EXM_KG_PATH:-}" ]; then
+  EXTRA_ARGS+=(--kg-path "\${EXM_KG_PATH}")
 fi
 
 exec < "\${STDIN_SRC}" "\${CLI_DIR}/bin/exm.mjs" init \\
   --site-url "\${SITE_URL}" \\
   ${sessionArg} \\
   --no-cron \\
-  --auto-first-run
+  --auto-first-run \\
+  "\${EXTRA_ARGS[@]}"
 `;
 }
 

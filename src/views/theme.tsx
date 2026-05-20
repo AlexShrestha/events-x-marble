@@ -48,6 +48,9 @@ export const BASE_CSS = `
     --muted-2:#525252;
     --line:   #262626;
     --line-2: #1a1a1a;
+    --accent: #ff5a1f;          /* warm orange — the "alive" cue. Used sparingly. */
+    --accent-2: #ff8a5b;          /* hover/tint variant */
+    --accent-dim: rgba(255,90,31,0.18);
     --warn:   #fbbf24;
     --err:    #ef4444;
     --ok:     #10b981;
@@ -92,7 +95,9 @@ export const BASE_CSS = `
     font-size: 0.88em;
   }
 
-  /* "001 — abstract" style section number marker */
+  /* Numbered section label. Two layouts:
+     - small (inline): "01 — abstract" mono caption
+     - big: oversized Fraunces italic numeral on its own line (magazine spread). */
   .section-num {
     display: inline-flex; align-items: center; gap: 12px;
     font-family: var(--mono);
@@ -102,28 +107,59 @@ export const BASE_CSS = `
     text-transform: uppercase;
     margin-bottom: 24px;
   }
-  .section-num .num { color: var(--fg); font-weight: 500; }
+  .section-num .num { color: var(--accent); font-weight: 500; }
   .section-num .dash { color: var(--muted-2); }
+
+  .section-big {
+    margin-bottom: 24px; display: flex; align-items: baseline; gap: 24px;
+  }
+  .section-big .num-big {
+    font-family: var(--serif); font-style: italic; font-weight: 300;
+    font-size: 72px; line-height: 1; color: var(--accent);
+    letter-spacing: -0.04em;
+  }
+  .section-big .label {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
 
   /* Shared layout container */
   .page { max-width: 880px; margin: 0 auto; padding: 32px 24px 96px; }
   .page-wide { max-width: 1100px; margin: 0 auto; padding: 32px 24px 96px; }
 
-  /* Header bar */
+  /* Header bar — the brand mark differentiates "events" (italic display
+     serif, magazine/poster feel) from "marble" (clean sans-serif, the parent
+     brand). The × is the connector glyph in the accent color. */
   .nav {
     display: flex; justify-content: space-between; align-items: baseline;
     padding-bottom: 32px; margin-bottom: 56px;
     border-bottom: 1px solid var(--line);
   }
   .nav .brand {
-    font-family: var(--sans);
-    font-size: 14px; font-weight: 500;
-    border: 0; color: var(--fg);
+    font-size: 18px; line-height: 1; border: 0; color: var(--fg);
+    display: inline-flex; align-items: baseline; gap: 8px;
   }
-  .nav .brand .x { color: var(--muted); }
+  .nav .brand .events {
+    font-family: var(--serif); font-style: italic; font-weight: 400;
+    color: var(--fg); letter-spacing: -0.01em;
+  }
+  .nav .brand .x {
+    color: var(--accent); font-family: var(--sans); font-weight: 500;
+    font-size: 13px; position: relative; top: -1px;
+  }
+  .nav .brand .marble {
+    font-family: var(--sans); font-weight: 500; color: var(--fg);
+    letter-spacing: -0.01em; font-size: 14px;
+  }
+  .nav .brand:hover .x { color: var(--accent-2); }
+
   .nav .links { display: flex; gap: 24px; align-items: center; }
-  .nav .links a { font-size: 13px; color: var(--muted); border: 0; }
+  .nav .links a {
+    font-size: 13px; color: var(--muted); border: 0;
+    font-family: var(--mono); letter-spacing: 0.02em;
+  }
   .nav .links a:hover { color: var(--fg); }
+  .nav .links a.active { color: var(--fg); }
 
   /* CTA button */
   .btn {
@@ -141,6 +177,19 @@ export const BASE_CSS = `
     border: 1px solid var(--line) !important;
   }
   .btn-ghost:hover { border-color: var(--fg) !important; }
+
+  /* Small figure caption — used to label data-visual moments
+     (e.g. "fig.01 · weekly verdict · n=∞") */
+  .fig {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); letter-spacing: 0.02em;
+    padding: 6px 12px; border: 1px solid var(--line);
+    background: var(--bg-2);
+  }
+  .fig .fig-id { color: var(--accent); font-weight: 500; }
+  .fig .fig-dot { color: var(--muted-2); }
+  .fig .fig-body { color: var(--fg-2); }
 
   /* Mono command pre block (the install line on /connect) */
   .cmd {
@@ -187,12 +236,14 @@ export const BASE_CSS = `
 export const NavBar: FC<{ activePath?: string }> = ({ activePath }) => (
   <nav class="nav">
     <a href="/" class="brand bare">
-      events <span class="x">×</span> marble
+      <span class="events">events</span>
+      <span class="x">×</span>
+      <span class="marble">marble</span>
     </a>
     <div class="links">
       <a href="/events" class={activePath === "/events" ? "active" : ""}>events</a>
       <a href="/connect" class={activePath === "/connect" ? "active" : ""}>connect</a>
-      <a href="https://timesmarble.com" target="_blank" rel="noopener" class="bare" style="color: var(--muted)">timesmarble ↗</a>
+      <a href="https://timesmarble.com" target="_blank" rel="noopener" style="color: var(--muted)">timesmarble ↗</a>
     </div>
   </nav>
 );
@@ -209,12 +260,30 @@ export const Footer: FC = () => (
   </footer>
 );
 
-/** Numbered section label, e.g. <SectionLabel num="01" title="install" /> */
+/** Small mono-caption section label, e.g. <SectionLabel num="01" title="install" /> */
 export const SectionLabel: FC<{ num: string; title: string }> = ({ num, title }) => (
   <div class="section-num">
     <span class="num">{num}</span>
     <span class="dash">—</span>
     <span>{title}</span>
+  </div>
+);
+
+/** Big magazine-spread section heading — oversized italic numeral + caption. */
+export const SectionBig: FC<{ num: string; title: string }> = ({ num, title }) => (
+  <div class="section-big">
+    <span class="num-big">{num}</span>
+    <span class="label">{title}</span>
+  </div>
+);
+
+/** Small "figure" caption block, à la timesmarble's "fig.01 · n=35 e=42".
+ *  Renders as a hairline-bordered mono block. */
+export const Fig: FC<{ id: string; children: string }> = ({ id, children }) => (
+  <div class="fig">
+    <span class="fig-id">fig.{id}</span>
+    <span class="fig-dot">·</span>
+    <span class="fig-body">{children}</span>
   </div>
 );
 

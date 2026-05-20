@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import { BASE_CSS, Footer, NavBar, Page, PageHead, SectionLabel } from "./theme.tsx";
+import { BASE_CSS, Fig, Footer, NavBar, Page, PageHead, SectionBig } from "./theme.tsx";
 
 interface Props {
   /** Auto-detected from UA at render time. */
@@ -26,16 +26,18 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
         <NavBar activePath="/connect" />
 
         <section class="hero">
-          <p class="kicker">one command · ~5–8 min</p>
-          <h1>connect your marble</h1>
-          <p class="lede">
-            Your graph and your key stay on your laptop. We see only what you
-            push.
+          <Fig id="00">one command · ~5–8 min · KG never leaves your laptop</Fig>
+          <h1 class="hero-h1">
+            <span>connect your</span>
+            <span class="serif-italic">marble</span>
+          </h1>
+          <p class="lede-line">
+            Your graph and your key stay on your laptop. We see only what you push.
           </p>
         </section>
 
         <section class="step">
-          <SectionLabel num="01" title="copy this command" />
+          <SectionBig num="01" title="copy this command" />
           <div class="meta-row">
             <span class="meta-chip" data-os={os}>
               <span class="meta-label">os</span>
@@ -140,7 +142,7 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
         </section>
 
         <section class="step" id="step2">
-          <SectionLabel num="02" title="watching for your laptop" />
+          <SectionBig num="02" title="watching for your laptop" />
           <div class="status" id="status">
             <div class="spinner" id="spinner" />
             <div class="status-text" id="statusText">
@@ -320,14 +322,17 @@ function osLabel(os: Props["os"]): string {
 
 const CONNECT_CSS = `
   .hero { padding: 24px 0 56px; }
-  .hero .kicker {
-    font-family: var(--mono); font-size: 11px;
-    color: var(--muted); text-transform: lowercase;
-    letter-spacing: 0.08em; margin-bottom: 24px;
+  .hero-h1 {
+    font-family: var(--serif); font-weight: 300;
+    font-size: clamp(48px, 9vw, 80px); line-height: 1; letter-spacing: -0.03em;
+    margin: 24px 0 0 0; display: flex; flex-direction: column;
   }
-  .hero h1 { font-weight: 300; }
-  .hero .lede {
-    font-size: 16px; max-width: 540px; margin: 24px 0 0 0; color: var(--fg-2);
+  .hero-h1 .serif-italic { font-style: italic; color: var(--accent); }
+  .hero .lede-line {
+    font-family: var(--serif); font-style: italic; font-weight: 300;
+    font-size: 20px; line-height: 1.4;
+    max-width: 540px; margin: 32px 0 0 0; color: var(--fg-2);
+    display: block;
   }
 
   .step { padding: 56px 0; border-top: 1px solid var(--line); }
@@ -346,6 +351,8 @@ const CONNECT_CSS = `
   .meta-chip .meta-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .meta-chip .meta-value { color: var(--fg); font-weight: 500; }
   .meta-chip .meta-warn { color: var(--warn); }
+  .meta-chip[data-os="macos"] { border-color: var(--accent-dim); }
+  .meta-chip[data-os="macos"] .meta-value { color: var(--accent); }
 
   .hint {
     margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 580px;
@@ -385,7 +392,7 @@ const CONNECT_CSS = `
     border: 2px solid var(--line); border-top-color: var(--fg);
     animation: spin 1s linear infinite;
   }
-  .spinner.done { animation: none; border: 0; background: var(--ok); position: relative; }
+  .spinner.done { animation: none; border: 0; background: var(--accent); position: relative; }
   .spinner.done::after {
     content: ""; position: absolute; inset: 0; background: var(--bg);
     clip-path: polygon(20% 50%, 45% 75%, 80% 30%, 75% 25%, 45% 65%, 25% 45%);

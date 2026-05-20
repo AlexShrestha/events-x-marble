@@ -1,4 +1,5 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
+import { FONTS_LINK } from "./theme.tsx";
 
 interface AccentPalette {
   primary: string;
@@ -13,15 +14,21 @@ interface LayoutProps {
 }
 
 export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ title, accent, children }) => {
+  // KG-derived accent overrides the bright fg color used on chips/badges so
+  // each user's dashboard inherits a subtle personalization tint. We do NOT
+  // override --bg or --fg (those are part of the brand palette).
   const overrideCss = accent
-    ? `:root { --accent: ${accent.primary}; --rare: ${accent.rare}; --card: ${accent.card}; }`
+    ? `:root { --kg-accent: ${accent.primary}; --kg-rare: ${accent.rare}; }`
     : "";
   return (
     <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{title ?? "Events x Marble"}</title>
+        <title>{title ?? "events × marble"}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+        <link rel="stylesheet" href={FONTS_LINK} />
         <style>{css}</style>
         {overrideCss ? <style>{overrideCss}</style> : null}
       </head>
@@ -32,98 +39,165 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ title, accent, chil
 
 const css = `
   :root {
-    --bg: #0f1115;
-    --fg: #e5e7eb;
-    --muted: #8b95a3;
-    --accent: #f59e0b;
-    --rare: #f43f5e;
-    --card: #161922;
-    --border: #232733;
+    --bg:     #0a0a0a;
+    --bg-2:   #141414;
+    --bg-3:   #1a1a1a;
+    --fg:     #f5f5f4;
+    --fg-2:   #d4d4d4;
+    --muted:  #737373;
+    --muted-2:#525252;
+    --line:   #262626;
+    --warn:   #fbbf24;
+    --err:    #ef4444;
+    --ok:     #10b981;
+    /* KG-personalized accents — defaulted to white if no KG payload. Override
+       via the optional <Layout accent={...}> prop. */
+    --kg-accent: #f5f5f4;
+    --kg-rare:   #fbbf24;
+    --serif:  "Fraunces", "Times New Roman", Times, serif;
+    --sans:   "Geist", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono:   "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  a { color: inherit; }
-  header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; gap: 16px;
-    align-items: baseline; flex-wrap: wrap; }
-  header h1 { font-size: 20px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  main { max-width: 960px; margin: 0 auto; padding: 24px; }
-  form.filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
-  form.filters label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
-  form.filters select, form.filters input {
-    background: var(--card); color: var(--fg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font: inherit; min-width: 140px;
-  }
-  form.filters button {
-    background: var(--accent); color: #0f1115; border: 0; border-radius: 8px;
-    padding: 10px 16px; font-weight: 600; cursor: pointer; align-self: flex-end;
-  }
-  .day { margin-bottom: 28px; }
-  .day h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 12px 0;
-    text-transform: uppercase; letter-spacing: 0.06em; }
-  .event { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px; margin-bottom: 8px; display: flex; gap: 14px; align-items: flex-start; }
-  .event .time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px;
-    min-width: 56px; padding-top: 2px; }
-  .event .body { flex: 1; }
-  .event .title { font-weight: 600; margin-bottom: 4px; }
-  .event .meta { color: var(--muted); font-size: 12px; }
-  .event .meta a { color: var(--accent); text-decoration: none; }
-  .event .rarity { display: inline-block; font-size: 10px;
-    padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
-    font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-  .rarity-muted { background: #3a3f4a; color: #8b95a3; }
-  .rarity-amber { background: #92400e; color: #fbbf24; }
-  .rarity-rare { background: #c2410c; color: #fed7aa; }
-  .rarity-ultra { background: var(--rare); color: #fff; }
-  .source-badge { display: inline-block; background: #232733; color: #8b95a3; font-size: 10px;
-    padding: 2px 7px; border-radius: 4px; margin-right: 7px; vertical-align: middle;
-    font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; max-width: 140px;
-    overflow: hidden; text-overflow: ellipsis; }
-  .stats { font-variant-numeric: tabular-nums; }
-  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .filter-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
-    letter-spacing: 0.06em; white-space: nowrap; }
-  .chip { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px;
-    background: var(--card); border: 1px solid var(--border); color: var(--muted);
-    text-decoration: none; cursor: pointer; transition: border-color 0.15s; }
-  .chip:hover { border-color: var(--accent); color: var(--fg); }
-  .chip-active { background: var(--accent); color: #0f1115; border-color: var(--accent);
-    font-weight: 600; }
-  .chip-cat.chip-active { background: #6d28d9; border-color: #6d28d9; color: #fff; }
-  .filter-row-wrap { gap: 6px; }
-  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
-  footer { color: var(--muted); font-size: 12px; padding: 24px; text-align: center; }
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  a { color: inherit; text-decoration: none; }
 
-  /* --- Personalization layer (only renders when picks payload is present) --- */
-  .me-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px;
-    background: color-mix(in oklab, var(--accent) 22%, transparent);
-    color: var(--accent); border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
-    margin-left: 8px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    vertical-align: middle; }
-  .picks { margin: 8px 0 28px 0; padding: 16px 18px;
-    background: color-mix(in oklab, var(--accent) 6%, var(--card));
-    border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border));
-    border-radius: 14px; }
-  .picks-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 12px; }
-  .picks-header h2 { font-size: 13px; font-weight: 700; color: var(--accent);
-    margin: 0; text-transform: uppercase; letter-spacing: 0.08em; }
-  .picks-sub { font-size: 11px; color: var(--muted); }
-  .picks-list { display: flex; flex-direction: column; gap: 8px; }
-  .pick { display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
-    padding: 10px 12px; border-radius: 10px; background: var(--card);
-    border: 1px solid var(--border); transition: border-color 0.15s, transform 0.15s; }
-  .pick:hover { border-color: var(--accent); transform: translateX(2px); }
-  .pick-rank { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 700;
-    color: var(--accent); min-width: 24px; text-align: center; padding-top: 2px; }
-  .pick-body { flex: 1; }
-  .pick-title { font-weight: 600; margin-bottom: 2px; }
+  /* Top bar (events dashboard) */
+  header { padding: 28px 24px 24px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+    max-width: 1100px; margin: 0 auto; }
+  header h1 { font-family: var(--serif); font-size: 30px; margin: 0;
+    font-weight: 300; letter-spacing: -0.02em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .stats { font-variant-numeric: tabular-nums; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  /* Filter bar */
+  form.filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
+  form.filters label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 4px;
+    text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--mono); }
+  form.filters select, form.filters input {
+    background: var(--bg-2); color: var(--fg); border: 1px solid var(--line);
+    padding: 8px 10px; font: inherit; font-family: var(--sans); min-width: 140px;
+    border-radius: 0;
+  }
+  form.filters select:focus, form.filters input:focus { outline: none; border-color: var(--fg); }
+  form.filters button {
+    background: var(--fg); color: var(--bg); border: 0;
+    padding: 9px 18px; font-weight: 500; cursor: pointer; align-self: flex-end;
+    text-transform: lowercase; font-size: 13px;
+  }
+  form.filters button:hover { opacity: 0.88; }
+
+  .day { margin-bottom: 32px; }
+  .day h2 {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: var(--muted); margin: 0 0 14px 0;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .event {
+    background: var(--bg-2); border: 1px solid var(--line);
+    padding: 16px 18px; margin-bottom: 6px;
+    display: flex; gap: 16px; align-items: flex-start;
+    transition: border-color 0.15s;
+  }
+  .event:hover { border-color: var(--line); background: var(--bg-3); }
+  .event .time { color: var(--muted); font-family: var(--mono);
+    font-size: 12px; min-width: 56px; padding-top: 3px; }
+  .event .body { flex: 1; min-width: 0; }
+  .event .title { font-weight: 500; margin-bottom: 4px; font-size: 15px; }
+  .event .meta { color: var(--muted); font-size: 12px; }
+  .event .meta a { color: var(--fg); border-bottom: 1px solid var(--line); }
+  .event .meta a:hover { border-color: var(--fg); }
+
+  .event .rarity {
+    display: inline-block; font-family: var(--mono); font-size: 9px;
+    padding: 2px 6px; border: 1px solid var(--line);
+    margin-left: 8px; vertical-align: middle;
+    font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .rarity-muted { color: var(--muted-2); }
+  .rarity-amber { color: var(--warn); border-color: rgba(251,191,36,0.4); }
+  .rarity-rare  { color: var(--fg); border-color: var(--fg); }
+  .rarity-ultra { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+
+  .source-badge {
+    display: inline-block; background: transparent; color: var(--muted);
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 6px; border: 1px solid var(--line);
+    margin-right: 8px; vertical-align: middle;
+    font-weight: 400; letter-spacing: 0.02em; white-space: nowrap;
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-label { font-family: var(--mono); font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+
+  .chip {
+    display: inline-block; padding: 5px 12px; font-size: 12px;
+    background: var(--bg-2); border: 1px solid var(--line); color: var(--muted);
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    text-transform: lowercase;
+  }
+  .chip:hover { border-color: var(--fg); color: var(--fg); }
+  .chip-active { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 500; }
+  .chip-cat.chip-active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .filter-row-wrap { gap: 6px; }
+
+  .empty { color: var(--muted); padding: 64px 0; text-align: center;
+    font-family: var(--serif); font-style: italic; font-size: 18px; }
+
+  footer {
+    color: var(--muted); font-size: 12px; padding: 32px 24px;
+    text-align: center; border-top: 1px solid var(--line); margin-top: 64px;
+    font-family: var(--mono); letter-spacing: 0.04em;
+  }
+
+  /* --- Personalization layer --- */
+  .me-badge {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    padding: 2px 8px; border: 1px solid var(--kg-accent); color: var(--kg-accent);
+    margin-left: 10px; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; vertical-align: middle;
+  }
+  .picks {
+    margin: 16px 0 32px 0; padding: 24px 24px;
+    border: 1px solid var(--kg-accent);
+    background: var(--bg-2);
+  }
+  .picks-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 16px; }
+  .picks-header h2 {
+    font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--kg-accent);
+    margin: 0; text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .picks-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .picks-list { display: flex; flex-direction: column; gap: 6px; }
+  .pick {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 14px 14px; background: var(--bg); border: 1px solid var(--line);
+    transition: border-color 0.15s;
+  }
+  .pick:hover { border-color: var(--kg-accent); }
+  .pick-rank {
+    font-family: var(--serif); font-size: 22px; font-weight: 300; font-style: italic;
+    color: var(--kg-accent); min-width: 26px; text-align: center; padding-top: 0;
+  }
+  .pick-body { flex: 1; min-width: 0; }
+  .pick-title { font-weight: 500; margin-bottom: 4px; font-size: 15px; }
   .pick-emoji { margin-right: 6px; }
-  .pick-rationale { color: var(--fg); font-size: 12px; opacity: 0.85; margin-bottom: 4px;
-    font-style: italic; }
-  .pick-meta { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .pick-rationale {
+    font-family: var(--serif); font-style: italic; font-size: 13px;
+    color: var(--fg-2); margin-bottom: 6px; line-height: 1.4;
+  }
+  .pick-meta { color: var(--muted); font-family: var(--mono); font-size: 11px; }
   .title-emoji { margin-right: 6px; }
-  .event-picked { border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 15%, transparent) inset; }
+  .event-picked {
+    border-color: var(--kg-accent);
+    box-shadow: inset 2px 0 0 0 var(--kg-accent);
+  }
 `;

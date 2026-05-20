@@ -121,10 +121,40 @@ export async function buildKgFromFile({ cfg, kgPath, dataPath, format = "auto" }
   await report({
     cfg,
     state: "learning",
-    message: "synthesising patterns across your KG… (this can take 2–5 minutes)",
+    message: "first learn pass (L1.5 insight swarm → L2 inference → L3 clones)…",
   });
 
   await marble.learn();
+
+  // Run marble's adaptive investigation committee to fill knowledge gaps
+  // (curator-driven probing, not gated on the first learn). Best-effort —
+  // if investigate isn't available in this marble version, just skip.
+  if (typeof marble.investigate === "function") {
+    await report({
+      cfg,
+      state: "learning",
+      message: "investigating gaps (adaptive committee)…",
+    });
+    try {
+      await marble.investigate({ rounds: 1 });
+    } catch (e) {
+      // Don't fail the whole build on a flaky investigate pass.
+      process.stderr.write(`  [investigate] skipped: ${e.message}\n`);
+    }
+
+    // Second learn pass — incorporates anything investigate() produced into
+    // the L1.5/L2/L3 layers so the final KG reflects the full pipeline.
+    await report({
+      cfg,
+      state: "learning",
+      message: "second learn pass (incorporating new gap-beliefs)…",
+    });
+    try {
+      await marble.learn();
+    } catch (e) {
+      process.stderr.write(`  [learn-2nd-pass] skipped: ${e.message}\n`);
+    }
+  }
 
   // Validate the KG actually has usable content. Newer marble versions
   // synthesize into `user.insights` even when the older slots stay empty

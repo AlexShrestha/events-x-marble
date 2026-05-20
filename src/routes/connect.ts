@@ -23,6 +23,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { exec, queryGet } from "../db/index.ts";
 import { signUserCookie } from "../auth/session.ts";
+import { geoFromHeaders } from "../lib/geo.ts";
 
 export const connectApp = new Hono();
 
@@ -37,14 +38,28 @@ connectApp.post("/new", async (c) => {
 
   const userAgent = c.req.raw.headers.get("user-agent")?.slice(0, 200) ?? null;
   const ip = clientIp(c.req.raw.headers);
+  const geo = geoFromHeaders(c.req.raw.headers);
 
   await exec(
-    `INSERT INTO connect_sessions (id, status, user_agent, origin_ip, expires_at)
-     VALUES (?, 'pending', ?, ?, ?)`,
-    [id, userAgent, ip, expiresAt],
+    `INSERT INTO connect_sessions
+       (id, status, user_agent, origin_ip, expires_at,
+        geo_city, geo_country, geo_region, geo_lat, geo_lng, geo_timezone)
+     VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userAgent, ip, expiresAt,
+     geo.city, geo.country, geo.region, geo.lat, geo.lng, geo.timezone],
   );
 
-  return c.json({ ok: true, session_id: id, expires_at: expiresAt });
+  return c.json({
+    ok: true,
+    session_id: id,
+    expires_at: expiresAt,
+    geo: {
+      city: geo.city,
+      city_slug: geo.citySlug,
+      country: geo.country,
+      timezone: geo.timezone,
+    },
+  });
 });
 
 // ---- GET /api/v1/connect/status?session=cnx_xxx --------------------------

@@ -178,6 +178,14 @@ CREATE TABLE IF NOT EXISTS connect_sessions (
   status        TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'connected'
   user_agent    TEXT,                            -- of the browser that created it
   origin_ip     TEXT,
+  -- Geo detected from Vercel edge headers when the session was minted.
+  -- Used by /api/v1/register so the CLI inherits the user's city without prompts.
+  geo_city      TEXT,
+  geo_country   TEXT,
+  geo_region    TEXT,
+  geo_lat       REAL,
+  geo_lng       REAL,
+  geo_timezone  TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   expires_at    TEXT NOT NULL,                   -- 30 min from creation
   connected_at  TEXT

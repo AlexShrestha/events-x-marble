@@ -20,6 +20,15 @@ await ensureColumn("users", "onboarding_message", "TEXT");
 await ensureColumn("users", "onboarding_error_category", "TEXT");
 await ensureColumn("users", "onboarding_updated_at", "TEXT");
 
+// v5: geo columns on connect_sessions so /api/v1/connect/new can persist
+// the visitor's detected location and /api/v1/register can hand it to the CLI.
+await ensureColumn("connect_sessions", "geo_city", "TEXT");
+await ensureColumn("connect_sessions", "geo_country", "TEXT");
+await ensureColumn("connect_sessions", "geo_region", "TEXT");
+await ensureColumn("connect_sessions", "geo_lat", "REAL");
+await ensureColumn("connect_sessions", "geo_lng", "REAL");
+await ensureColumn("connect_sessions", "geo_timezone", "TEXT");
+
 // The legacy 'alex' user is fully provisioned — bump its state to 'ready' so
 // /me doesn't show him an onboarding-in-progress screen.
 await exec(

@@ -83,8 +83,24 @@ export async function run(args) {
   const kgPath = await pickKgPath(flags, buildingFromData);
 
   // --- 3. City + display name
-  const citySlug = flags.city
-    ?? await ask("city slug", { default: "barcelona", validate: (v) => v.length > 0 || "required" });
+  // Zero-prompt UX: when --connect-session is set, the server has already
+  // geo-detected the user's city from the browser's edge headers — let it
+  // dictate and skip the prompt entirely. Only ask manually if no session
+  // (running events-x-marble init directly, no /connect browser tab).
+  const connectSessionForCity =
+    flags["connect-session"] ?? process.env.EXM_CONNECT_SESSION;
+  let citySlug;
+  if (flags.city) {
+    citySlug = flags.city;
+  } else if (connectSessionForCity) {
+    citySlug = null; // defer to server's geo-detected default
+    process.stderr.write("city: detecting from your browser location…\n");
+  } else {
+    citySlug = await ask("city slug", {
+      default: "barcelona",
+      validate: (v) => v.length > 0 || "required",
+    });
+  }
   const displayName = flags["display-name"]
     ?? await ask("display name (optional, for your own dashboard)", { default: "" });
 
@@ -108,10 +124,19 @@ export async function run(args) {
       siteUrl,
       displayName: displayName || undefined,
       label: hostnameLabel(),
-      defaultCitySlug: citySlug,
+      ...(citySlug ? { defaultCitySlug: citySlug } : {}),
       connectSessionId: connectSession,
     });
+    // Server response includes `city` (the effective city after geo detection
+    // and auto-bootstrap). Adopt it so the CLI's saved config matches what
+    // the server expects.
+    if (registration.city) {
+      citySlug = registration.city;
+      process.stderr.write(`city: ${citySlug} (detected from browser)\n`);
+    }
   }
+  // Fallback if dry-run or server returned no city.
+  if (!citySlug) citySlug = "barcelona";
 
   // --- 5. Persist config
   ensureConfigDir();

@@ -163,13 +163,25 @@ async function listRecentStatusLog(userId: string) {
 app.get("/events", async (c) => renderEventsPage(c, { picksFor: null }));
 
 /** Onboarding page — fetches a connect session via the inline script, polls, redirects. */
-app.get("/connect", (c) => {
+app.get("/connect", async (c) => {
+  const { geoFromHeaders } = await import("./lib/geo.ts");
   const ua = c.req.raw.headers.get("user-agent") ?? "";
   let os: "macos" | "linux" | "windows" | "other" = "other";
   if (/Mac OS X|macOS/i.test(ua)) os = "macos";
   else if (/Linux/i.test(ua) && !/Android/i.test(ua)) os = "linux";
   else if (/Windows/i.test(ua)) os = "windows";
-  return c.html(<Connect os={os} siteUrl={env.SITE_URL} />);
+  const geo = geoFromHeaders(c.req.raw.headers);
+  return c.html(
+    <Connect
+      os={os}
+      siteUrl={env.SITE_URL}
+      geo={{
+        city: geo.city,
+        country: geo.country,
+        timezone: geo.timezone,
+      }}
+    />,
+  );
 });
 
 // ---- shared events-page renderer (used by /me and /events) ---------------

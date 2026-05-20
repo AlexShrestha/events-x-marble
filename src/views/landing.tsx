@@ -1,185 +1,252 @@
 import type { FC } from "hono/jsx";
+import { BASE_CSS, Footer, NavBar, Page, PageHead, SectionLabel } from "./theme.tsx";
 
 interface Props {
   eventCount: number;
   cityName: string;
 }
 
+/**
+ * Landing page — aligned to timesmarble.com editorial design.
+ *
+ * Structure (mirrors timesmarble.com's section pattern):
+ *   nav
+ *   hero          (h1 + abstract sub + CTA)
+ *   001 — abstract
+ *   01  — what it does
+ *   02  — what stays local
+ *   03  — install
+ *   footer
+ */
 export const Landing: FC<Props> = ({ eventCount, cityName }) => (
   <html lang="en">
     <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Events × Marble</title>
-      <meta
-        name="description"
-        content="Hyper-personalized event discovery for your city. Powered by your local marble knowledge graph."
+      <PageHead
+        title="events × marble — hyper-personal event discovery"
+        description="A personalization graph for your city. Marble scores every upcoming event in your city against your local knowledge graph. Only the irresistible ones reach you."
       />
-      <style>{css}</style>
+      <style>{BASE_CSS}</style>
+      <style>{LANDING_CSS}</style>
     </head>
     <body>
-      <main class="page">
-        <header class="hdr">
-          <span class="brand">Events × Marble</span>
-          <nav class="nav">
-            <a href="/events">Browse events</a>
-            <a href="/connect" class="cta-small">Connect</a>
-          </nav>
-        </header>
+      <Page>
+        <NavBar activePath="/" />
 
         <section class="hero">
+          <div class="section-num">
+            <span class="num">001</span>
+            <span class="dash">—</span>
+            <span>abstract</span>
+          </div>
+          <p class="kicker">your city · your knowledge graph · zero noise</p>
           <h1>
-            Events you'd <em>die</em> to go to,
+            Events you'd <em>die</em>
             <br />
-            <span class="amber">picked by your marble.</span>
+            to go to.
           </h1>
           <p class="lede">
-            We score every upcoming event in your city against your local marble
-            knowledge graph. Only the irresistible ones reach you. Silence is the
-            feature.
+            Marble turns your reading + chat history into a living personalization
+            graph, then scores every upcoming event in your city against it.
+            Only the irresistible ones reach you. Silence is the feature.
           </p>
           <div class="cta-row">
-            <a href="/connect" class="cta-primary">Connect your marble →</a>
-            <a href="/events" class="cta-secondary">
-              See {eventCount} public events in {cityName}
+            <a href="/connect" class="btn">connect your marble →</a>
+            <a href="/events" class="btn btn-ghost">
+              {eventCount} public events in {cityName} →
             </a>
           </div>
         </section>
 
-        <section class="how">
-          <h2>How it works</h2>
-          <ol>
+        <section class="block">
+          <SectionLabel num="01" title="what it does" />
+          <div class="grid">
+            <div class="grid-item">
+              <h3>cold-start in one command</h3>
+              <p>
+                Paste a single line. We install events × marble locally, bootstrap
+                a marble knowledge graph from your data, and link your laptop to
+                the site. ~5–8 min.
+              </p>
+            </div>
+            <div class="grid-item">
+              <h3>scores every event against you</h3>
+              <p>
+                Each week, your laptop pulls the upcoming event corpus, scores
+                it against your KG using your own LLM key, and pushes a sanitized
+                "picks" payload to this site.
+              </p>
+            </div>
+            <div class="grid-item">
+              <h3>silence when nothing fits</h3>
+              <p>
+                No anniversary alerts. No "people you may know". If nothing crosses
+                the irresistibility threshold this week, you see nothing.
+              </p>
+            </div>
+            <div class="grid-item">
+              <h3>your KG is yours</h3>
+              <p>
+                Your raw beliefs, identities, preferences, and LLM API key never
+                touch our servers. Only the sanitized weekly picks reach Turso.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <SectionLabel num="02" title="what stays local" />
+          <table class="stays">
+            <tr>
+              <td class="cell-stays">stays on your laptop</td>
+              <td class="cell-leaves">reaches our server</td>
+            </tr>
+            <tr>
+              <td>raw marble KG (beliefs, identities, preferences)</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td>your LLM API key</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td>your data ingest file (chat / journal / notes)</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td>—</td>
+              <td>~12 interest labels, weekly</td>
+            </tr>
+            <tr>
+              <td>—</td>
+              <td>top picks (event ids + 120-char rationales)</td>
+            </tr>
+            <tr>
+              <td>—</td>
+              <td>3-color accent palette derived from KG</td>
+            </tr>
+          </table>
+        </section>
+
+        <section class="block">
+          <SectionLabel num="03" title="install" />
+          <p class="install-lede">
+            Three steps. ~5–8 minutes. Your browser tab auto-advances as the
+            laptop checks in.
+          </p>
+          <ol class="install-steps">
             <li>
-              <span class="num">1</span>
+              <span class="step-num">i</span>
               <div>
-                <strong>One command, no terminal-gymnastics.</strong>
+                <strong>visit /connect</strong>
                 <p>
-                  Copy a single line into Terminal. We install the CLI, pull
-                  marble, and link your laptop to this browser tab. ~30
-                  seconds.
+                  We auto-detect your city from your browser location. No
+                  questions, no pickers.
                 </p>
               </div>
             </li>
             <li>
-              <span class="num">2</span>
+              <span class="step-num">ii</span>
               <div>
-                <strong>Your KG stays on your laptop.</strong>
+                <strong>paste one command</strong>
                 <p>
-                  Your beliefs, identities, preferences, and LLM API key
-                  never reach our servers. We only ever see the sanitized
-                  weekly "picks" payload you push.
+                  The installer pulls events × marble + marble onto your
+                  laptop, builds your KG from your data, scores this week's
+                  events.
                 </p>
               </div>
             </li>
             <li>
-              <span class="num">3</span>
+              <span class="step-num">iii</span>
               <div>
-                <strong>Weekly: marble scores, you go (or don't).</strong>
+                <strong>tab auto-redirects to /me</strong>
                 <p>
-                  Every Sunday morning the CLI runs locally, scores the
-                  upcoming corpus against your KG, and pushes your picks.
-                  Visit this site to see them.
+                  When your laptop finishes, your dashboard is ready. No URL
+                  pasting. No tokens to copy.
                 </p>
               </div>
             </li>
           </ol>
+          <div class="install-cta">
+            <a href="/connect" class="btn">connect your marble →</a>
+          </div>
         </section>
 
-        <section class="ctaFinal">
-          <a href="/connect" class="cta-primary">Connect your marble →</a>
-        </section>
-
-        <footer class="ftr">
-          <span>Open source · KG stays on your laptop · MIT licensed</span>
-          <span class="dot">·</span>
-          <a href="/events">Public events</a>
-          <span class="dot">·</span>
-          <a href="/privacy">Privacy</a>
-          <span class="dot">·</span>
-          <a href="https://github.com/AlexShrestha/marble" target="_blank" rel="noopener">
-            What is marble?
-          </a>
-        </footer>
-      </main>
+        <Footer />
+      </Page>
     </body>
   </html>
 );
 
-const css = `
-  :root {
-    --bg: #0d0f13; --bg-2: #131720; --fg: #e7e9ee; --fg-2: #b6bcc8;
-    --muted: #6c7384; --accent: #f59e0b; --border: #1f2430; --card: #161a23;
+const LANDING_CSS = `
+  .hero { padding: 24px 0 80px; }
+  .hero .kicker {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); text-transform: lowercase;
+    letter-spacing: 0.08em; margin-bottom: 32px;
   }
-  * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background: var(--bg); color: var(--fg);
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    line-height: 1.55; }
-  a { color: var(--fg); text-decoration: none; }
-  a:hover { color: var(--accent); }
+  .hero h1 em {
+    font-style: italic; font-weight: 400; color: var(--fg-2);
+  }
+  .hero .lede {
+    font-size: 18px; line-height: 1.6;
+    max-width: 580px; margin: 36px 0 0 0; color: var(--fg-2);
+  }
+  .cta-row {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 48px;
+  }
 
-  .page { max-width: 880px; margin: 0 auto; padding: 32px 24px 96px; }
+  .block { padding: 64px 0; border-top: 1px solid var(--line); }
 
-  .hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 96px; }
-  .brand { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
-  .nav { display: flex; gap: 24px; align-items: center; }
-  .nav a { font-size: 14px; color: var(--fg-2); }
-  .nav a:hover { color: var(--fg); }
-  .cta-small {
-    background: var(--accent); color: #0d0f13 !important;
-    padding: 8px 14px; border-radius: 6px; font-weight: 600;
+  .grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line); margin-top: 24px;
   }
-  .cta-small:hover { filter: brightness(1.1); }
+  .grid-item { background: var(--bg); padding: 32px 28px; }
+  .grid-item h3 {
+    font-family: var(--sans); font-size: 14px; font-weight: 500;
+    text-transform: lowercase; letter-spacing: 0.01em;
+    margin: 0 0 12px 0;
+  }
+  .grid-item p { font-size: 14px; color: var(--fg-2); }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
 
-  .hero h1 {
-    font-size: clamp(40px, 7vw, 64px); margin: 0 0 24px 0; line-height: 1.05;
-    letter-spacing: -0.03em; font-weight: 700; max-width: 760px;
+  .stays {
+    width: 100%; border-collapse: collapse;
+    margin-top: 24px; font-size: 14px;
   }
-  .hero h1 em { font-style: italic; color: var(--fg-2); font-weight: 700; }
-  .hero h1 .amber { color: var(--accent); }
-  .lede { font-size: 18px; color: var(--fg-2); max-width: 560px; margin: 0 0 36px 0; }
+  .stays td {
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+    color: var(--fg-2); vertical-align: top;
+  }
+  .stays td:first-child { width: 50%; border-right: 1px solid var(--line); }
+  .stays .cell-stays, .stays .cell-leaves {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+    padding-bottom: 12px;
+  }
+  .stays tr:first-child td { border-top: 1px solid var(--line); }
+  .stays tr:nth-child(2) td { padding-top: 24px; }
 
-  .cta-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-  .cta-primary {
-    background: var(--accent); color: #0d0f13 !important;
-    padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 16px;
-    display: inline-flex; align-items: center; gap: 8px;
+  .install-lede { font-size: 15px; color: var(--fg-2); margin-bottom: 32px; max-width: 540px; }
+  .install-steps {
+    list-style: none; padding: 0; margin: 0;
+    border-top: 1px solid var(--line);
   }
-  .cta-primary:hover { filter: brightness(1.1); }
-  .cta-secondary {
-    background: transparent; color: var(--fg-2) !important;
-    padding: 14px 24px; border-radius: 8px;
-    border: 1px solid var(--border); font-size: 14px;
-  }
-  .cta-secondary:hover { border-color: var(--accent); color: var(--fg) !important; }
-
-  .how { margin-top: 120px; padding-top: 56px; border-top: 1px solid var(--border); }
-  .how h2 {
-    font-size: 13px; font-weight: 600; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 32px 0;
-  }
-  .how ol { list-style: none; padding: 0; margin: 0; }
-  .how li {
+  .install-steps li {
     display: flex; gap: 24px; padding: 24px 0;
-    border-bottom: 1px dashed var(--border);
+    border-bottom: 1px solid var(--line);
   }
-  .how li:last-child { border-bottom: 0; }
-  .how .num {
-    flex-shrink: 0; width: 32px; height: 32px;
-    display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 50%; background: var(--card); color: var(--accent);
-    font-weight: 700; font-size: 14px;
-    border: 1px solid var(--border);
+  .install-steps .step-num {
+    flex-shrink: 0;
+    font-family: var(--serif); font-size: 28px; font-weight: 300;
+    color: var(--muted); min-width: 32px;
+    font-style: italic;
   }
-  .how strong { display: block; font-size: 17px; margin-bottom: 4px; }
-  .how p { margin: 0; color: var(--fg-2); font-size: 14px; max-width: 580px; }
-
-  .ctaFinal { margin-top: 80px; text-align: center; }
-
-  .ftr {
-    margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--border);
-    color: var(--muted); font-size: 12px; text-align: center;
+  .install-steps strong {
+    display: block; font-family: var(--sans); font-weight: 500;
+    font-size: 16px; margin-bottom: 6px;
   }
-  .ftr .dot { margin: 0 10px; color: var(--border); }
-  .ftr a { color: var(--muted); }
-  .ftr a:hover { color: var(--fg-2); }
+  .install-steps p { color: var(--fg-2); font-size: 14px; max-width: 540px; }
+  .install-cta { margin-top: 40px; }
 `;

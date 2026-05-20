@@ -1,0 +1,35 @@
+{
+  "name": "events-x-marble",
+  "version": "0.1.0",
+  "description": "Personalized event discovery for marble users. Scores upcoming events in your city against your marble KG, pushes a sanitized rent payload to events.timesmarble.com — KG and API key stay on your laptop.",
+  "type": "module",
+  "bin": {
+    "events-x-marble": "bin/exm.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test:dry-init": "node bin/exm.mjs init --dry-run"
+  },
+  "dependencies": {
+    "marble": "github:AlexShrestha/marble"
+  },
+  "keywords": [
+    "marble",
+    "events",
+    "personalization",
+    "barcelona"
+  ],
+  "author": "Alex Shrestha",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AlexShrestha/events-x-marble"
+  }
+}

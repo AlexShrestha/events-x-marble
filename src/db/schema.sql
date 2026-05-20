@@ -94,3 +94,93 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
   display     TEXT,
   queried_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- v2 — Personalization rent payload pushed by the local cron.
+-- Stores ONLY derived/sanitized signals (picks + emoji palette + category weights
+-- + ≤120-char rationales). Never raw beliefs/identities/preferences. See
+-- src/marble/derive-payload.ts for the sanitizer that enforces this contract.
+CREATE TABLE IF NOT EXISTS me_picks (
+  id              TEXT PRIMARY KEY,
+  city_slug       TEXT NOT NULL,
+  schema_version  INTEGER NOT NULL DEFAULT 1,
+  payload         TEXT NOT NULL,                 -- JSON: MePicksPayload v1
+  kg_fingerprint  TEXT NOT NULL,                 -- sha256(snapshot)[:8], non-reversible
+  generated_at    TEXT NOT NULL,
+  expires_at      TEXT NOT NULL,
+  last_push_ip    TEXT,
+  user_id         TEXT,                          -- v3: per-user keying. NULL = legacy pre-migration.
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_me_picks_city_generated
+  ON me_picks(city_slug, generated_at DESC);
+-- Note: idx_me_picks_user is created in src/db/migrate.ts AFTER the ALTER TABLE
+-- that adds the user_id column on already-existing me_picks tables.
+
+-- v3 — Multi-user support. Marble KGs stay on the user's laptop; we only
+-- store enough to (a) route their pushed picks to the right row and
+-- (b) authenticate the laptop CLI that's pushing.
+CREATE TABLE IF NOT EXISTS users (
+  id                  TEXT PRIMARY KEY,                            -- 'alex' (legacy) or 'usr_<random>'
+  display_name        TEXT,
+  default_city_slug   TEXT NOT NULL DEFAULT 'barcelona',
+  is_admin            INTEGER NOT NULL DEFAULT 0,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at          TEXT
+);
+
+-- Per-user tokens. Plaintext token only ever exists on the user's laptop
+-- (in ~/.events-x-marble/config.json) and in their browser cookie. The
+-- server stores sha256(token) only. Rotate by issuing a fresh row + revoking
+-- the old one; revoke by setting revoked_at.
+CREATE TABLE IF NOT EXISTS user_tokens (
+  id              TEXT PRIMARY KEY,                                -- 'tok_<random>'
+  user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash      TEXT NOT NULL UNIQUE,                            -- sha256(plaintext)
+  label           TEXT,                                            -- 'laptop', 'work-mbp', etc.
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  revoked_at      TEXT,
+  last_seen_at    TEXT,
+  last_seen_ip    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_hash_active
+  ON user_tokens(token_hash) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_user_tokens_user
+  ON user_tokens(user_id, revoked_at);
+
+-- Per-user onboarding state — CLI posts status updates throughout init,
+-- scoring, and pushing. The /me page reads these columns to render the right
+-- view ('still ingesting', 'set your API key first', 'failed: contact us',
+-- 'ready'). user_status_log stores the audit trail for diagnostics.
+-- These columns are added idempotently by src/db/migrate.ts so existing rows
+-- are upgraded without re-creating the table.
+
+CREATE TABLE IF NOT EXISTS user_status_log (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  state           TEXT NOT NULL,            -- 'new'|'key_missing'|'ingesting'|'learning'|'scoring'|'pushing'|'ready'|'error'
+  message         TEXT,                     -- human-readable detail
+  error_category  TEXT,                     -- 'key_invalid'|'kg_load_failed'|'ingest_failed'|'learn_failed'|'score_failed'|'push_failed'|'network'|'unknown'
+  client_info     TEXT,                     -- e.g. CLI version, hostname (optional, redacted)
+  remote_ip       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_user_status_log_user
+  ON user_status_log(user_id, created_at DESC);
+
+-- Browser onboarding handshake. A visitor lands on /connect; we mint a
+-- session id, the browser polls /api/v1/connect/status. The CLI's `init`
+-- carries the session id back via POST /api/v1/register, which links
+-- the new user to the session — so the browser can auto-redirect to /me
+-- without the user pasting any URL.
+CREATE TABLE IF NOT EXISTS connect_sessions (
+  id            TEXT PRIMARY KEY,              -- 'cnx_<random>' (browser holds this; polled URL)
+  user_id       TEXT REFERENCES users(id) ON DELETE CASCADE,
+  status        TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'connected'
+  user_agent    TEXT,                            -- of the browser that created it
+  origin_ip     TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at    TEXT NOT NULL,                   -- 30 min from creation
+  connected_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_connect_sessions_status
+  ON connect_sessions(status, expires_at);

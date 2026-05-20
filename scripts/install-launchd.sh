@@ -10,7 +10,9 @@
 set -euo pipefail
 
 LABEL="com.events-x-marble.weekly-digest"
-SCRIPT="/Users/skela/Documents/events x marble/scripts/weekly-digest.sh"
+# Resolve the sibling weekly-digest.sh path from this script's own location,
+# so contributors don't have to edit a hardcoded path before running it.
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/weekly-digest.sh"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 if [ ! -x "$SCRIPT" ]; then

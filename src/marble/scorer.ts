@@ -91,6 +91,25 @@ export async function scoreEventsWithKgPath(
   opts: ScoreOpts,
 ): Promise<ScoreResult> {
   const { kg, loadedFrom } = await loadKg(kgPath);
+  return scoreEventsWithKg(events, kg, opts, { kgLoadedFrom: loadedFrom });
+}
+
+/**
+ * Core scoring primitive — pure-ish function over an already-loaded KG.
+ * Use this when the caller has the KG in memory (e.g. server-side multi-user
+ * scoring path that decrypted a per-user blob). The two wrappers above keep
+ * the legacy "load from file" call sites working.
+ *
+ * apiKeyOverride: per-call OpenCode/Anthropic key — required for the multi-user
+ * path where each request uses the caller's key, falls back to env when null.
+ */
+export async function scoreEventsWithKg(
+  events: EventForScoring[],
+  kg: MarbleKg,
+  opts: ScoreOpts,
+  meta: { kgLoadedFrom?: string; apiKeyOverride?: string } = {},
+): Promise<ScoreResult> {
+  const loadedFrom = meta.kgLoadedFrom ?? "(in-memory)";
   const counts = kgCounts(kg);
   const threshold = opts.threshold ?? 0.85;
   const forecastDays = opts.forecastDays ?? 7;
@@ -132,6 +151,7 @@ export async function scoreEventsWithKgPath(
     schema: ResultSchema,
     maxTokens: 8000,
     models: [{ id: model, reasoning: false, pricing: pricingFor(model) }],
+    ...(meta.apiKeyOverride ? { apiKey: meta.apiKeyOverride } : {}),
   });
 
   if (!res.ok || !res.parsed) {

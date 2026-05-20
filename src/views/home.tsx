@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.tsx";
 import type { City, EventRow } from "../db/queries.ts";
+import type { MePicksPayload } from "../marble/derive-payload.ts";
 
 interface Props {
   cities: City[];
@@ -14,6 +15,8 @@ interface Props {
   selectedCategories: string[];
   allCategories: string[];
   rareCount: number;
+  /** Personalization layer (null = public mode). Pushed weekly by the local cron. */
+  picks?: MePicksPayload | null;
 }
 
 export const Home: FC<Props> = ({
@@ -28,8 +31,31 @@ export const Home: FC<Props> = ({
   selectedCategories,
   allCategories,
   rareCount,
+  picks,
 }) => {
   const grouped = groupByDay(events, selectedCity?.timezone ?? "UTC", sort);
+  const eventsById = new Map<string, EventRow>(events.map((e) => [e.id, e]));
+
+  // Hydrate the picks section: look up each pick's event row from the same
+  // weekly window so we have title/venue/time. Picks that aged out of the
+  // window are silently dropped.
+  const hydratedPicks = picks
+    ? picks.picks
+        .map((p) => {
+          const ev = eventsById.get(p.event_id);
+          return ev ? { pick: p, event: ev } : null;
+        })
+        .filter((x): x is { pick: typeof picks.picks[number]; event: EventRow } => x !== null)
+    : [];
+
+  // Stale pill: generated_at older than 7 days?
+  const personalizationStaleDays = picks
+    ? Math.floor((Date.now() - Date.parse(picks.generated_at)) / 86_400_000)
+    : 0;
+  const isStale = personalizationStaleDays > 7;
+
+  // Build a category → emoji map from the interest palette + a name-match heuristic.
+  const categoryEmoji = picks ? buildCategoryEmojiMap(picks) : new Map<string, string>();
 
   // Build a base query string preserving city, from, to, and category params
   const buildQS = (overrides: Record<string, string | null>) => {
@@ -51,7 +77,7 @@ export const Home: FC<Props> = ({
   const categoryCount = allCategories.length;
 
   return (
-    <Layout title="Events x Marble">
+    <Layout title="Events x Marble" accent={picks?.accent_palette ?? null}>
       <header>
         <h1>Events x Marble</h1>
         <span class="sub">
@@ -64,6 +90,14 @@ export const Home: FC<Props> = ({
             {" · "}
             {categoryCount} {categoryCount === 1 ? "category" : "categories"}
           </span>
+          {picks ? (
+            <>
+              {" · "}
+              <span class="me-badge" title={`KG fingerprint ${picks.kg_fingerprint}`}>
+                personalized{isStale ? ` · stale ${personalizationStaleDays}d` : ""}
+              </span>
+            </>
+          ) : null}
         </span>
       </header>
       <main>
@@ -130,10 +164,10 @@ export const Home: FC<Props> = ({
             Rare (≥0.6)
           </a>
           <a
-            href={buildQS({ min_rarity: "0.8" })}
-            class={`chip${minRarity === 0.8 ? " chip-active" : ""}`}
+            href={buildQS({ min_rarity: "0.7" })}
+            class={`chip${minRarity === 0.7 ? " chip-active" : ""}`}
           >
-            Off-the-beaten-path (≥0.8)
+            Off-the-beaten-path (≥0.7)
           </a>
         </div>
 
@@ -160,18 +194,60 @@ export const Home: FC<Props> = ({
           </div>
         ) : null}
 
+        {/* Personalized picks (renders only when the visitor has the signed cookie) */}
+        {picks && hydratedPicks.length > 0 ? (
+          <section class="picks">
+            <div class="picks-header">
+              <h2>Picks for you</h2>
+              <span class="picks-sub">
+                {hydratedPicks.length} of {picks.picks.length} in this window
+              </span>
+            </div>
+            <div class="picks-list">
+              {hydratedPicks.map(({ pick, event: e }) => {
+                const emoji = e.category ? categoryEmoji.get(e.category.toLowerCase()) : undefined;
+                return (
+                  <a class="pick" href={`#evt-${e.id}`}>
+                    <span class="pick-rank">{pick.rank}</span>
+                    <div class="pick-body">
+                      <div class="pick-title">
+                        {emoji ? <span class="pick-emoji">{emoji}</span> : null}
+                        {e.title}
+                      </div>
+                      <div class="pick-rationale">{pick.rationale}</div>
+                      <div class="pick-meta">
+                        {formatTime(e.starts_at, selectedCity?.timezone ?? "UTC")}
+                        {" · "}
+                        {e.venue_name ?? "—"}
+                        {" · score "}
+                        {pick.marble_score.toFixed(2)}
+                      </div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
         {grouped.length === 0 ? (
           <div class="empty">No events in this window yet. Run a pipeline to populate.</div>
         ) : (
           grouped.map(([day, dayEvents]) => (
             <section class="day">
               <h2>{day}</h2>
-              {dayEvents.map((e) => (
-                <article class="event">
+              {dayEvents.map((e) => {
+                const emoji = picks && e.category
+                  ? categoryEmoji.get(e.category.toLowerCase())
+                  : undefined;
+                const isPicked = picks?.picks.some((p) => p.event_id === e.id) ?? false;
+                return (
+                <article class={`event${isPicked ? " event-picked" : ""}`} id={`evt-${e.id}`}>
                   <div class="time">{formatTime(e.starts_at, selectedCity?.timezone ?? "UTC")}</div>
                   <div class="body">
                     <div class="title">
                       <span class="source-badge">{truncate(e.source_name, 18)}</span>
+                      {emoji ? <span class="title-emoji">{emoji}</span> : null}
                       {e.title}
                       <span class={rarityBadgeClass(e.rarity_score)}>
                         {rarityLabel(e.rarity_score)}
@@ -192,7 +268,8 @@ export const Home: FC<Props> = ({
                     </div>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </section>
           ))
         )}
@@ -265,4 +342,17 @@ function formatTime(iso: string, tz: string): string {
     hour12: false,
   });
   return fmt.format(new Date(iso));
+}
+
+/**
+ * Build a category → emoji lookup from the payload's pre-resolved category_emoji
+ * map (computed on the laptop by derive-payload using the master EMOJI_MAP).
+ * Keys are normalized to lowercase for case-insensitive event.category matching.
+ */
+function buildCategoryEmojiMap(picks: MePicksPayload): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [cat, emoji] of Object.entries(picks.category_emoji)) {
+    out.set(cat.toLowerCase(), emoji);
+  }
+  return out;
 }

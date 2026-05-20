@@ -1,16 +1,34 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 
-export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, children }) => (
-  <html lang="en">
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>{title ?? "Events x Marble"}</title>
-      <style>{css}</style>
-    </head>
-    <body>{children}</body>
-  </html>
-);
+interface AccentPalette {
+  primary: string;
+  rare: string;
+  card: string;
+}
+
+interface LayoutProps {
+  title?: string;
+  /** Optional KG-derived palette. Null → default theme. */
+  accent?: AccentPalette | null;
+}
+
+export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ title, accent, children }) => {
+  const overrideCss = accent
+    ? `:root { --accent: ${accent.primary}; --rare: ${accent.rare}; --card: ${accent.card}; }`
+    : "";
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{title ?? "Events x Marble"}</title>
+        <style>{css}</style>
+        {overrideCss ? <style>{overrideCss}</style> : null}
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+};
 
 const css = `
   :root {
@@ -77,4 +95,35 @@ const css = `
   .filter-row-wrap { gap: 6px; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
   footer { color: var(--muted); font-size: 12px; padding: 24px; text-align: center; }
+
+  /* --- Personalization layer (only renders when picks payload is present) --- */
+  .me-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
+    color: var(--accent); border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+    margin-left: 8px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    vertical-align: middle; }
+  .picks { margin: 8px 0 28px 0; padding: 16px 18px;
+    background: color-mix(in oklab, var(--accent) 6%, var(--card));
+    border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border));
+    border-radius: 14px; }
+  .picks-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+  .picks-header h2 { font-size: 13px; font-weight: 700; color: var(--accent);
+    margin: 0; text-transform: uppercase; letter-spacing: 0.08em; }
+  .picks-sub { font-size: 11px; color: var(--muted); }
+  .picks-list { display: flex; flex-direction: column; gap: 8px; }
+  .pick { display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
+    padding: 10px 12px; border-radius: 10px; background: var(--card);
+    border: 1px solid var(--border); transition: border-color 0.15s, transform 0.15s; }
+  .pick:hover { border-color: var(--accent); transform: translateX(2px); }
+  .pick-rank { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 700;
+    color: var(--accent); min-width: 24px; text-align: center; padding-top: 2px; }
+  .pick-body { flex: 1; }
+  .pick-title { font-weight: 600; margin-bottom: 2px; }
+  .pick-emoji { margin-right: 6px; }
+  .pick-rationale { color: var(--fg); font-size: 12px; opacity: 0.85; margin-bottom: 4px;
+    font-style: italic; }
+  .pick-meta { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .title-emoji { margin-right: 6px; }
+  .event-picked { border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 15%, transparent) inset; }
 `;

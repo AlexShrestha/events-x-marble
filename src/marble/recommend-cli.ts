@@ -9,12 +9,17 @@
  */
 import { parseArgs } from "node:util";
 import { applySchema, closeDb, queryAll, queryGet } from "../db/index.ts";
-import { env } from "../env.ts";
-import { scoreEventsForUser, type EventForScoring } from "./scorer.ts";
+import { scoreEventsWithKg, type EventForScoring } from "./scorer.ts";
+import {
+  getApiKeyForUser,
+  loadKgForUser,
+  resolveUserOrDefault,
+} from "./user.ts";
 
 const { values } = parseArgs({
   options: {
     city: { type: "string", short: "c" },
+    user: { type: "string", short: "u" },
     days: { type: "string", short: "d" },
     notes: { type: "string", short: "n" },
     threshold: { type: "string", short: "t" },
@@ -23,13 +28,13 @@ const { values } = parseArgs({
 });
 
 if (!values.city) {
-  console.error('Usage: bun run recommend --city <slug> [--days 7] [--notes "..."] [--threshold 0.85] [--model claude-haiku-4-5]');
+  console.error('Usage: bun run recommend --city <slug> [--user <id>] [--days 7] [--notes "..."] [--threshold 0.85] [--model claude-haiku-4-5]');
   process.exit(2);
 }
-if (!env.MARBLE_KG_PATH) {
-  console.error("MARBLE_KG_PATH not set in .env — point it at your Marble KG JSON file.");
-  process.exit(2);
-}
+
+const user = await resolveUserOrDefault(values.user);
+const userApiKey = await getApiKeyForUser(user.id, "opencode");
+console.log(`[recommend] user: ${user.id}`);
 
 await applySchema();
 
@@ -115,12 +120,19 @@ const centroid: [number, number] | null =
     ? [city.centroid_lng, city.centroid_lat]
     : null;
 
-const result = await scoreEventsForUser(events, {
-  city: { name: city.name, centroid, timezone: city.timezone },
-  ...(values.notes ? { notes: values.notes } : {}),
-  threshold,
-  ...(values.model ? { model: values.model } : {}),
-});
+const kg = await loadKgForUser(user.id);
+
+const result = await scoreEventsWithKg(
+  events,
+  kg,
+  {
+    city: { name: city.name, centroid, timezone: city.timezone },
+    ...(values.notes ? { notes: values.notes } : {}),
+    threshold,
+    ...(values.model ? { model: values.model } : {}),
+  },
+  { apiKeyOverride: userApiKey },
+);
 
 console.log("");
 console.log(`KG loaded from: ${result.meta.kg_loaded_from}`);

@@ -20,14 +20,19 @@ fi
 PATTERNS=(
   # Known personal email of the maintainer (placeholder — replace if forked).
   "alex\.shrestha88@gmail\.com"
-  # Common KG file-name shapes; if these are referenced in code, you're about to leak a path.
+  # Personal KG file naming (alex-* prefix) — generic 'marble-kg.json' is a legit
+  # public reference and shouldn't trip this check.
   "alex-marble-kg"
-  "marble-kg\.json"
+  # Hardcoded absolute paths into anyone's HOME — usually a copy/paste mistake.
+  "/Users/skela"
+  "/Users/[a-z][a-z0-9._-]+/Documents"
   # Generic API key shapes (OpenAI / Anthropic / Stripe — paranoia).
   "sk-[A-Za-z0-9_]{20,}"
   "sk_live_[A-Za-z0-9]{20,}"
   # Bearer tokens hardcoded.
   "Bearer\s+[A-Za-z0-9._-]{30,}"
+  # Live ME_TOKEN / OPENCODE_API_KEY shapes
+  "tok_[a-f0-9]{40,}"
 )
 
 FAILED=0

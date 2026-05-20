@@ -12,13 +12,19 @@ import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { applySchema, closeDb, queryAll, queryGet } from "../db/index.ts";
 import { env } from "../env.ts";
-import { scoreEventsForUser, type EventForScoring } from "./scorer.ts";
+import { scoreEventsWithKg, type EventForScoring } from "./scorer.ts";
 import { renderEmail } from "./email-render.ts";
 import { sendEmail } from "./send-email.ts";
+import {
+  getApiKeyForUser,
+  loadKgForUser,
+  resolveUserOrDefault,
+} from "./user.ts";
 
 const { values } = parseArgs({
   options: {
     city: { type: "string", short: "c" },
+    user: { type: "string", short: "u" },
     days: { type: "string", short: "d" },
     notes: { type: "string", short: "n" },
     threshold: { type: "string", short: "t" },
@@ -33,13 +39,13 @@ const { values } = parseArgs({
 });
 
 if (!values.city) {
-  console.error('Usage: bun run deliver --city <slug> [--days 14] [--threshold 0.85] [--notes "..."]');
+  console.error('Usage: bun run deliver --city <slug> [--user <id>] [--days 14] [--threshold 0.85] [--notes "..."]');
   process.exit(2);
 }
-if (!env.MARBLE_KG_PATH) {
-  console.error("MARBLE_KG_PATH not set in .env");
-  process.exit(2);
-}
+
+const user = await resolveUserOrDefault(values.user);
+const userApiKey = await getApiKeyForUser(user.id, "opencode");
+console.log(`[deliver] user: ${user.id}`);
 
 await applySchema();
 
@@ -121,12 +127,19 @@ const centroid: [number, number] | null =
     ? [city.centroid_lng, city.centroid_lat]
     : null;
 
-const result = await scoreEventsForUser(candidates, {
-  city: { name: city.name, centroid, timezone: city.timezone },
-  ...(values.notes ? { notes: values.notes } : {}),
-  threshold,
-  ...(values.model ? { model: values.model } : {}),
-});
+const kg = await loadKgForUser(user.id);
+
+const result = await scoreEventsWithKg(
+  candidates,
+  kg,
+  {
+    city: { name: city.name, centroid, timezone: city.timezone },
+    ...(values.notes ? { notes: values.notes } : {}),
+    threshold,
+    ...(values.model ? { model: values.model } : {}),
+  },
+  { apiKeyOverride: userApiKey },
+);
 
 const email = renderEmail(result, {
   cityName: city.name,

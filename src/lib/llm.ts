@@ -17,6 +17,12 @@ export interface ExtractOpts<T> {
   /** Override model order. Default: free-first cascade. */
   models?: ModelSpec[];
   maxTokens?: number;
+  /**
+   * Per-call OpenCode/Anthropic API key. When set, overrides env.OPENCODE_API_KEY
+   * for this call only. Required for multi-user scoring (each user's request uses
+   * their own key, never the server's default). Falls back to env when unset.
+   */
+  apiKey?: string;
 }
 
 export interface ModelSpec {
@@ -47,9 +53,9 @@ const OPENCODE_BASE = () => env.OPENCODE_BASE_URL.replace(/\/$/, "");
  * No paid fallback — the plan says "skip and retry next week" on failure.
  */
 export async function extractJson<T>(opts: ExtractOpts<T>): Promise<LlmResult<T>> {
-  const key = env.OPENCODE_API_KEY;
+  const key = opts.apiKey ?? env.OPENCODE_API_KEY;
   if (!key) {
-    return emptyResult({ error: "OPENCODE_API_KEY missing" });
+    return emptyResult({ error: "OPENCODE_API_KEY missing (no per-call apiKey override either)" });
   }
   const models = opts.models ?? DEFAULT_FREE_MODELS;
   let lastError = "no models tried";

@@ -30,6 +30,11 @@ local/
 *.log
 .DS_Store
 .vercel
+.claude/
+
+# --- CLI's own runtime state (created by `events-x-marble init` on contributors' machines)
+.events-x-marble/
+packages/cli/node_modules/
 
 # --- Vercel build artifacts (esbuild bundles src/vercel-entry.ts)
 api/[...path].mjs

@@ -130,10 +130,25 @@ echo ""
 say "starting init… (your browser tab will auto-redirect when this finishes)"
 echo ""
 
-exec "\${CLI_DIR}/bin/exm.mjs" init \\
+# When the user invoked us via \`curl … | bash\`, this shell's stdin is the curl
+# pipe (already drained by reading the script body) — so any subsequent prompts
+# would read EOF and the init would hang forever asking "use this? [Y/n]".
+# Redirecting stdin from /dev/tty pulls input directly from the user's terminal
+# regardless of how this script was piped in.
+if [ -t 0 ]; then
+  STDIN_SRC=/dev/stdin
+elif [ -e /dev/tty ]; then
+  STDIN_SRC=/dev/tty
+else
+  warn "no controllable terminal detected — passing --no-prompts to init"
+  STDIN_SRC=/dev/null
+fi
+
+exec < "\${STDIN_SRC}" "\${CLI_DIR}/bin/exm.mjs" init \\
   --site-url "\${SITE_URL}" \\
   ${sessionArg} \\
-  --no-cron
+  --no-cron \\
+  --auto-first-run
 `;
 }
 

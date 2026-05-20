@@ -18,7 +18,11 @@
  *   --display-name NAME
  *   --llm-key-env NAME      env var holding the API key (e.g. ANTHROPIC_API_KEY)
  *   --provider NAME         opencode | anthropic | openai
- *   --no-cron               skip cron install offer
+ *   --no-cron               skip cron install offer (no prompt)
+ *   --auto-first-run        do a first scoring run immediately after register
+ *                           (no prompt; install script defaults to this so /me
+ *                           lands on real picks instead of an empty dashboard)
+ *   --no-first-run          skip the first scoring run (no prompt)
  *   --dry-run               do everything except the registration POST
  *   --connect-session ID    Browser-handshake id from /api/v1/connect/new —
  *                           passed through register() so the polling browser
@@ -140,10 +144,16 @@ export async function run(args) {
   }
 
   if (!flags["no-cron"] && !flags["dry-run"]) {
-    const installCron = await askYesNo(
-      "\ninstall the weekly cron now? (Sundays 8am local)",
-      { default: true },
-    );
+    let installCron;
+    if (flags["auto-cron"]) {
+      installCron = true;
+      process.stderr.write("\ninstalling weekly cron automatically (--auto-cron)…\n");
+    } else {
+      installCron = await askYesNo(
+        "\ninstall the weekly cron now? (Sundays 8am local)",
+        { default: true },
+      );
+    }
     if (installCron) {
       const cronInstall = await import("./cron-install.mjs");
       await cronInstall.run([]);
@@ -153,7 +163,15 @@ export async function run(args) {
   }
 
   if (!flags["dry-run"]) {
-    const doRun = await askYesNo("\ndo a first scoring run now?", { default: true });
+    let doRun;
+    if (flags["auto-first-run"]) {
+      doRun = true;
+      process.stderr.write("\nstarting first scoring run automatically (--auto-first-run)…\n");
+    } else if (flags["no-first-run"]) {
+      doRun = false;
+    } else {
+      doRun = await askYesNo("\ndo a first scoring run now?", { default: true });
+    }
     if (doRun) {
       const runMod = await import("./run.mjs");
       await runMod.run([]);

@@ -50,7 +50,21 @@ export function profileSnapshot(user, opts = {}) {
     .map(traitLine)
     .filter(Boolean);
 
-  return { interests, beliefs, preferences, identities, traits };
+  // v0.1.0+ marble synthesizes meta-observations into user.insights even
+  // when the other slots stay empty (sparse input). Surface the top-N
+  // highest-confidence ones so the scorer has SOMETHING to work with for
+  // freshly-bootstrapped users.
+  const insights = (user.insights ?? [])
+    .slice()
+    .sort((a, b) => (b?.confidence ?? 0) - (a?.confidence ?? 0))
+    .slice(0, o.maxInsights ?? 10)
+    .map((i) => {
+      const text = (i?.insight ?? i?.observation ?? "").toString().slice(0, 160);
+      return text || null;
+    })
+    .filter(Boolean);
+
+  return { interests, beliefs, preferences, identities, traits, insights };
 }
 
 export function renderProfileForPrompt(p) {
@@ -62,6 +76,7 @@ export function renderProfileForPrompt(p) {
     block("IDENTITIES", p.identities),
     block("PREFERENCES", p.preferences),
     block("BELIEFS", p.beliefs),
+    block("INSIGHTS (marble synthesized observations)", p.insights ?? []),
   ]
     .filter(Boolean)
     .join("\n\n");

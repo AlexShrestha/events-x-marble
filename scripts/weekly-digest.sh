@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Autonomous weekly delivery — refresh Tier 0 corpus, score with marble, send via SMTP.
+# Autonomous weekly run — refresh Tier 0 corpus, score with marble, push picks
+# to events.timesmarble.com (browser is the only delivery surface — no email).
 # Invoked by launchd (see scripts/install-launchd.sh) every Sunday 8am local.
 #
 # Logs to /tmp/events-x-marble-weekly.log so failures don't disappear.
@@ -14,7 +15,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUN="${EXM_BUN:-$(command -v bun || echo /opt/homebrew/bin/bun)}"
 LOG="${EXM_LOG:-/tmp/events-x-marble-weekly.log}"
 
-echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') === weekly digest starting" >> "$LOG"
+echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') === weekly run starting" >> "$LOG"
 
 cd "$REPO" || {
   echo "  ✗ repo not found at $REPO" >> "$LOG"
@@ -25,15 +26,6 @@ cd "$REPO" || {
 echo "  refreshing Tier 0 corpus…" >> "$LOG"
 "$BUN" run pipeline --city barcelona --tier 0 --days 30 >> "$LOG" 2>&1 || \
   echo "  ⚠ tier-0 refresh hit an error; continuing with stale corpus" >> "$LOG"
-
-# Score + render + send.
-echo "  scoring + sending…" >> "$LOG"
-if "$BUN" run deliver --city barcelona --days 14 --threshold 0.85 --notes "weekly auto-digest" --send >> "$LOG" 2>&1; then
-  echo "  ✓ delivered" >> "$LOG"
-else
-  echo "  ✗ deliver failed (see lines above)" >> "$LOG"
-  exit 1
-fi
 
 # Push the sanitized "rent payload" (picks + emoji palette + accent colors) to
 # Vercel-at-rest so events.timesmarble.com can render personalized. Failure here

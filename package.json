@@ -13,7 +13,6 @@
     "scout:kg": "bun src/scout/scout-kg-cli.ts",
     "enrich": "bun src/discovery/enrich-cli.ts",
     "recommend": "bun src/marble/recommend-cli.ts",
-    "deliver": "bun src/marble/deliver-cli.ts",
     "push-picks": "bun src/marble/push-picks-cli.ts",
     "research:deep": "bun src/research/deep.ts",
     "build": "bun scripts/build-vercel.ts",
@@ -29,14 +28,12 @@
     "@libsql/client": "^0.17.3",
     "hono": "^4.6.0",
     "ical.js": "^2.2.1",
-    "nodemailer": "^8.0.7",
     "playwright": "^1.60.0",
     "rss-parser": "^3.13.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
-    "@types/nodemailer": "^8.0.0",
     "esbuild": "^0.28.0",
     "typescript": "^5.6.0"
   }

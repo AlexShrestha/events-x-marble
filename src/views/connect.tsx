@@ -76,46 +76,72 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
           </p>
 
           <details class="advanced">
-            <summary>don't have any data to bootstrap from?</summary>
+            <summary>what marble looks at on your laptop</summary>
             <div class="advanced-body">
               <p>
-                Marble builds your knowledge graph from a single text export —
-                a Claude/ChatGPT conversation history, a journal, daily notes,
-                anything in <code>.json</code>, <code>.txt</code>, or{" "}
-                <code>.md</code>. Prefix the install command with{" "}
-                <code>EXM_BUILD_FROM=…</code>:
+                marble auto-discovers everything it can learn from. No file
+                picker, no pre-staging. We sweep:
+              </p>
+              <ul class="caveats">
+                <li>
+                  <code>~/.claude/projects/</code> · Claude Code session logs
+                  (every coding conversation you've had).
+                </li>
+                <li>
+                  <code>~/Library/Application Support/Anthropic/</code> +{" "}
+                  <code>~/Library/Application Support/Claude/</code> · Claude
+                  desktop conversations.
+                </li>
+                <li>
+                  <code>~/Downloads/conversations*.json</code> ·{" "}
+                  <code>chatgpt-*.json</code> · any ChatGPT export.
+                </li>
+                <li>
+                  <code>~/Downloads/*.json</code> with chat-message shape ·
+                  generic captures.
+                </li>
+                <li>
+                  <code>~/Documents/Journal/</code> ·{" "}
+                  <code>Notes/</code> · <code>Obsidian/</code> · any{" "}
+                  <code>.md</code> / <code>.txt</code> you've written.
+                </li>
+              </ul>
+              <p style="margin-top: 14px">
+                marble's full pipeline runs locally: ingest → learn (L1.5 →
+                L2 → L3) → investigate → learn. ~5–8 min total. Nothing
+                leaves your laptop except the sanitized rent payload (picks
+                + interest labels + a 3-color palette).
+              </p>
+            </div>
+          </details>
+
+          <details class="advanced">
+            <summary>data in a non-standard location?</summary>
+            <div class="advanced-body">
+              <p>
+                If you keep your stuff somewhere we don't sweep, prefix the
+                install command with <code>EXM_BUILD_FROM=…</code> to add a
+                specific path to the discovered set:
               </p>
               <div class="cmd-wrap">
                 <pre
                   class="cmd cmd-mini"
                   id="cmdAlt"
-                  data-template={`EXM_BUILD_FROM=~/Downloads/your-data.json curl -fsSL ${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__ | bash`}
+                  data-template={`EXM_BUILD_FROM=~/path/to/your-data.json curl -fsSL ${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__ | bash`}
                 >
                   <span class="prompt">$ </span>
                   <span class="cmd-body" id="cmdAltBody">
-                    EXM_BUILD_FROM=~/Downloads/your-data.json{" "}
+                    EXM_BUILD_FROM=~/path/to/your-data.json{" "}
                     curl -fsSL {siteUrl.replace(/\/$/, "")}/install?session=
                     <span class="ph">…</span> | bash
                   </span>
                 </pre>
                 <button class="copy" id="copyAltBtn" type="button">copy</button>
               </div>
-              <ul class="caveats">
-                <li>
-                  bigger file = richer graph. A 6-month chat history works
-                  great; a 10-line snippet does not.
-                </li>
-                <li>
-                  marble's full inference pipeline runs locally: ingest →
-                  learn → investigate → learn. Total time ~5–8 min on your
-                  laptop's clock.
-                </li>
-                <li>
-                  the data file never leaves your laptop. Only the sanitized
-                  rent payload (picks + interest labels + accent colors)
-                  reaches our server.
-                </li>
-              </ul>
+              <p style="margin-top: 14px">
+                Works alongside auto-discovery — your path gets added to
+                whatever else we find.
+              </p>
             </div>
           </details>
 

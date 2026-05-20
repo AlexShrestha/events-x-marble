@@ -35,14 +35,19 @@ const PROVIDER_MAP = {
 };
 
 /**
- * Build a KG file at kgPath from dataPath, using marble.
- * Returns { kgPath, summary } on success. Throws on failure.
+ * Build a KG file at kgPath from a SET of discovered data sources using marble.
+ * Returns { kgPath, summary, counts, ingested } on success. Throws on failure.
+ *
+ * Each source is `{ path, format, kind, label, sizeBytes, recordEstimate }`
+ * as produced by discover-data.mjs's discoverDataSources(). Marble's ingest
+ * is called once per source; the storage path is shared so each ingest
+ * incrementally extends the same KG.
  *
  * cfg fields used: site_url, token (for status reports), llm_provider, llm_api_key_env
  */
-export async function buildKgFromFile({ cfg, kgPath, dataPath, format = "auto" }) {
-  if (!existsSync(dataPath)) {
-    throw new Error(`data file not found: ${dataPath}`);
+export async function buildKgFromSources({ cfg, kgPath, sources }) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    throw new Error("buildKgFromSources: at least one source required");
   }
 
   const apiKey = process.env[cfg.llm_api_key_env];
@@ -55,67 +60,50 @@ export async function buildKgFromFile({ cfg, kgPath, dataPath, format = "auto" }
     throw new Error(`marble doesn't support provider '${cfg.llm_provider}' yet`);
   }
 
-  // Suppress the embeddings-not-configured banner; events-x-marble doesn't use
-  // semantic embeddings (the scorer prompt does the heavy lifting via LLM).
   if (!process.env.EMBEDDINGS_PROVIDER) process.env.EMBEDDINGS_PROVIDER = "none";
 
-  // Build the `llm` function marble's constructor needs. ingestEpisodes /
-  // ingestConversations bail with "requires an LLM provider" unless this is
-  // present — env-based discovery is only used by learn() and internals.
   const llmFn = buildLlmFn(cfg.llm_provider, apiKey);
-
-  // Dynamically import marble so the embeddings banner only fires when this
-  // function actually runs (not on every CLI invocation).
   const { Marble } = await import("marble");
-
-  const detectedFormat = format === "auto" ? detectFormat(dataPath) : format;
-  await report({
-    cfg,
-    state: "ingesting",
-    message: `ingesting ${path.basename(dataPath)} as ${detectedFormat}…`,
-  });
 
   const marble = new Marble({
     storage: kgPath,
     llm: llmFn,
-    silent: true, // don't print warnings; we report via status
+    silent: true,
   });
   await marble.init();
 
-  if (detectedFormat === "chat") {
-    await marble.ingestConversations(dataPath);
-  } else if (detectedFormat === "episodes") {
-    const raw = readFileSync(dataPath, "utf8");
-    let parsed;
+  const ingested = [];
+  const skipped = [];
+
+  for (let i = 0; i < sources.length; i++) {
+    const src = sources[i];
+    if (!existsSync(src.path)) {
+      skipped.push({ ...src, reason: "missing" });
+      continue;
+    }
+    const detected = src.format === "auto" ? detectFormat(src.path) : normalizeFormat(src);
+    await report({
+      cfg,
+      state: "ingesting",
+      message: `ingesting ${i + 1}/${sources.length}: ${src.label}`,
+    });
     try {
-      parsed = JSON.parse(raw);
+      await ingestOne(marble, src.path, detected);
+      ingested.push({ ...src, asFormat: detected });
     } catch (e) {
-      throw new Error(`couldn't parse ${dataPath} as JSON: ${e.message}`);
+      // Don't fail the whole bootstrap if one source is malformed — log it
+      // and continue. The rest of the KG can still come together.
+      skipped.push({ ...src, reason: e.message ?? String(e) });
+      process.stderr.write(
+        `  [ingest] skipped ${src.label}: ${e.message?.slice(0, 120) ?? e}\n`,
+      );
     }
-    const episodes = Array.isArray(parsed) ? parsed : parsed.episodes;
-    if (!Array.isArray(episodes)) {
-      throw new Error(`expected an array of episodes in ${dataPath} (got ${typeof episodes})`);
-    }
-    await marble.ingestEpisodes(episodes);
-  } else if (detectedFormat === "text") {
-    // Treat each non-empty paragraph as a single-message episode. Quick but
-    // reasonable for journals / freeform notes.
-    const text = readFileSync(dataPath, "utf8");
-    const paragraphs = text
-      .split(/\n{2,}/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 8);
-    if (paragraphs.length === 0) {
-      throw new Error(`no usable content in ${dataPath} (file appears empty)`);
-    }
-    const episodes = paragraphs.map((p, i) => ({
-      id: `txt-${i}`,
-      timestamp: new Date(Date.now() - (paragraphs.length - i) * 86_400_000).toISOString(),
-      text: p,
-    }));
-    await marble.ingestEpisodes(episodes);
-  } else {
-    throw new Error(`unknown format: ${detectedFormat}`);
+  }
+
+  if (ingested.length === 0) {
+    throw new Error(
+      `couldn't ingest any of the ${sources.length} discovered sources — see log above.`,
+    );
   }
 
   await report({
@@ -177,16 +165,134 @@ export async function buildKgFromFile({ cfg, kgPath, dataPath, format = "auto" }
   const totalSignal = counts.interests + counts.beliefs + counts.preferences + counts.identities + counts.insights;
   if (totalSignal === 0) {
     throw new Error(
-      `marble produced an empty KG (${summary}). The input file may not have contained any extractable signal — try a larger or more varied data file.`,
+      `marble produced an empty KG (${summary}). The discovered sources may not have contained any extractable signal — try richer data.`,
     );
   }
   if (totalSignal < 5) {
     process.stderr.write(
-      `\n  warning: KG is sparse (${summary}). Picks quality may be low. Re-run with more data via \`events-x-marble add-data <file>\` (coming soon).\n`,
+      `\n  warning: KG is sparse (${summary}). Picks quality may be low.\n`,
     );
   }
 
-  return { kgPath, summary, counts };
+  return { kgPath, summary, counts, ingested, skipped };
+}
+
+/**
+ * Legacy single-file wrapper kept for backward compatibility with any caller
+ * that hasn't moved to source arrays yet. Wraps the path in a one-item
+ * sources array and delegates.
+ */
+export async function buildKgFromFile({ cfg, kgPath, dataPath, format = "auto" }) {
+  if (!existsSync(dataPath)) {
+    throw new Error(`data file not found: ${dataPath}`);
+  }
+  return buildKgFromSources({
+    cfg,
+    kgPath,
+    sources: [
+      {
+        path: dataPath,
+        format,
+        kind: "manual-build-from",
+        label: `manual override · ${path.basename(dataPath)}`,
+        sizeBytes: statSync(dataPath).size,
+        recordEstimate: 0,
+      },
+    ],
+  });
+}
+
+/** Single-file ingest dispatch. Used inside the buildKgFromSources loop. */
+async function ingestOne(marble, dataPath, detectedFormat) {
+  if (detectedFormat === "chat") {
+    await marble.ingestConversations(dataPath);
+    return;
+  }
+  if (detectedFormat === "jsonl") {
+    // JSONL → parse each non-empty line as an episode. We keep this lenient:
+    // any line with a usable `content` / `text` field becomes an episode.
+    const lines = readFileSync(dataPath, "utf8").split(/\r?\n/).filter(Boolean);
+    const episodes = [];
+    for (let i = 0; i < lines.length; i++) {
+      let obj;
+      try { obj = JSON.parse(lines[i]); } catch { continue; }
+      const text = extractEpisodeText(obj);
+      if (!text || text.length < 8) continue;
+      episodes.push({
+        id: `${path.basename(dataPath)}-${i}`,
+        timestamp:
+          (typeof obj?.timestamp === "string" && obj.timestamp) ||
+          new Date(Date.now() - (lines.length - i) * 86_400_000).toISOString(),
+        text,
+      });
+    }
+    if (episodes.length === 0) throw new Error("jsonl: no usable lines");
+    await marble.ingestEpisodes(episodes);
+    return;
+  }
+  if (detectedFormat === "episodes") {
+    const raw = readFileSync(dataPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const episodes = Array.isArray(parsed) ? parsed : parsed.episodes;
+    if (!Array.isArray(episodes)) throw new Error("expected array of episodes");
+    await marble.ingestEpisodes(episodes);
+    return;
+  }
+  if (detectedFormat === "text") {
+    const text = readFileSync(dataPath, "utf8");
+    const paragraphs = text
+      .split(/\n{2,}/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 8);
+    if (paragraphs.length === 0) throw new Error("file appears empty");
+    const episodes = paragraphs.map((p, i) => ({
+      id: `${path.basename(dataPath)}-${i}`,
+      timestamp: new Date(Date.now() - (paragraphs.length - i) * 86_400_000).toISOString(),
+      text: p,
+    }));
+    await marble.ingestEpisodes(episodes);
+    return;
+  }
+  throw new Error(`unknown format: ${detectedFormat}`);
+}
+
+/** Convert discover-data's format field into the dispatch token ingestOne expects. */
+function normalizeFormat(src) {
+  // Most JSON sources are chat-shape. The exception is when the JSON is
+  // explicitly an episodes array — we let the auto-detect path handle that.
+  if (src.format === "json") return src.kind === "chatgpt-export" || src.kind === "chatgpt-export-archive" || src.kind === "json-chat-heuristic" || src.kind === "claude-desktop" ? "chat" : detectFormat(src.path);
+  return src.format;
+}
+
+/** Extract a single representative text string from a parsed JSONL row. Covers
+ *  Claude Code session lines, ChatGPT message rows, and generic shapes. */
+function extractEpisodeText(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  if (typeof obj.text === "string") return obj.text;
+  if (typeof obj.content === "string") return obj.content;
+  // ChatGPT-style: message.content.parts[]
+  if (obj.message && obj.message.content) {
+    const c = obj.message.content;
+    if (typeof c === "string") return c;
+    if (Array.isArray(c?.parts)) return c.parts.filter((p) => typeof p === "string").join("\n");
+  }
+  // Claude Code session: { role, content } where content can be string or array
+  if (typeof obj.role === "string" && obj.content) {
+    if (typeof obj.content === "string") return obj.content;
+    if (Array.isArray(obj.content)) {
+      return obj.content
+        .map((part) =>
+          typeof part === "string"
+            ? part
+            : typeof part?.text === "string"
+              ? part.text
+              : "",
+        )
+        .filter(Boolean)
+        .join("\n");
+    }
+  }
+  return null;
 }
 
 // ---- helpers ----

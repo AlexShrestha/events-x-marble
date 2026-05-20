@@ -75,12 +75,10 @@ export async function run(args) {
   // --- 1. LLM provider + key env var
   const { provider, llmApiKeyEnv } = await pickProvider(flags);
 
-  // --- 2. KG path. Two modes:
-  //   - Pass A path: existing marble-kg.json file (default location, $MARBLE_STORAGE, or cwd)
-  //   - Pass B path: --build-from <data>  → KG will be built; default path is
-  //     ~/.events-x-marble/marble-kg.json and doesn't need to exist yet.
-  const buildingFromData = Boolean(flags["build-from"]);
-  const kgPath = await pickKgPath(flags, buildingFromData);
+  // --- 2. KG path. Auto-discovery handles the "no KG yet" case in
+  //        verifyPreflight() — the path here just specifies WHERE the KG
+  //        will live (existing or to-be-built).
+  const kgPath = await pickKgPath(flags);
 
   // --- 3. City + display name
   // Zero-prompt UX: when --connect-session is set, the server has already
@@ -251,26 +249,52 @@ async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv, buildFrom, kgFormat 
     return;
   }
 
-  // 2. KG file: if it doesn't exist, optionally build one from a data file
-  //    (chat export / journal / etc.) via marble — entirely black-box.
+  // 2. KG file: if it doesn't exist, build one from whatever data we can
+  //    find on the laptop. The discoverDataSources() sweep finds Claude
+  //    exports, ChatGPT history, ~/Downloads chat-shape JSON, Claude Code
+  //    sessions, and markdown journals. --build-from is just a manual
+  //    override that adds ONE more path to the discovered set.
   if (!existsSync(kgPath)) {
-    if (!buildFrom) {
-      const msg = `marble KG not found at ${kgPath} — pass --build-from <data-file> to build one from your data, or point --kg-path at an existing file.`;
+    const { discoverDataSources } = await import("./discover-data.mjs");
+    const discovered = discoverDataSources({});
+    if (buildFrom && existsSync(buildFrom)) {
+      discovered.unshift({
+        path: buildFrom,
+        format: kgFormat ?? "auto",
+        kind: "manual-build-from",
+        label: `manual override · ${buildFrom}`,
+        sizeBytes: 0,
+        recordEstimate: 1,
+      });
+    }
+    if (discovered.length === 0) {
+      const msg =
+        `marble KG not found at ${kgPath}, and we couldn't auto-discover any data on your laptop. ` +
+        `Common places we checked: ~/.claude/projects (Claude Code sessions), ~/Library/Application Support/Anthropic (Claude desktop), ~/Downloads (ChatGPT exports + chat-shape JSON), ~/Documents/Journal & Notes. ` +
+        `Pass --build-from /path/to/your-data.json to point us at a file we missed.`;
       process.stderr.write(`\n! ${msg}\n`);
       await report({ cfg, state: "kg_missing", message: msg });
       return;
     }
     try {
-      const { buildKgFromFile } = await import("./marble-build.mjs");
-      process.stderr.write(`\nbuilding KG from ${buildFrom}…\n`);
-      process.stderr.write("  (this can take 2–5 minutes; the browser tab is showing live progress)\n");
-      const { summary } = await buildKgFromFile({
+      const { buildKgFromSources } = await import("./marble-build.mjs");
+      process.stderr.write(`\nfound ${discovered.length} source(s) marble can learn from:\n`);
+      for (const src of discovered.slice(0, 10)) {
+        process.stderr.write(`  - ${src.label}  (${formatBytes(src.sizeBytes)})\n`);
+      }
+      if (discovered.length > 10) {
+        process.stderr.write(`  …and ${discovered.length - 10} more\n`);
+      }
+      process.stderr.write(`\nbuilding KG (5–8 min; browser tab tracks progress)…\n`);
+      const { summary, ingested, skipped } = await buildKgFromSources({
         cfg,
         kgPath,
-        dataPath: buildFrom,
-        format: kgFormat ?? "auto",
+        sources: discovered,
       });
-      process.stderr.write(`\n✓ KG built (${summary})\n`);
+      process.stderr.write(`\n✓ KG built from ${ingested.length} source(s) (${summary})\n`);
+      if (skipped.length > 0) {
+        process.stderr.write(`  (${skipped.length} skipped — see log above)\n`);
+      }
       await report({ cfg, state: "ready", message: `kg built (${summary})` });
       return;
     } catch (e) {
@@ -345,9 +369,11 @@ async function pickProvider(flags) {
   return { provider, llmApiKeyEnv };
 }
 
-async function pickKgPath(flags, buildingFromData = false) {
+async function pickKgPath(flags) {
+  // Explicit override always wins.
   if (flags["kg-path"]) return expandHome(flags["kg-path"]);
 
+  // Otherwise, check the three standard locations. If any exists, use it.
   const candidates = [
     process.env.MARBLE_STORAGE,
     DEFAULT_KG_PATH,
@@ -357,35 +383,17 @@ async function pickKgPath(flags, buildingFromData = false) {
   for (const c of candidates) {
     const resolved = expandHome(c);
     if (existsSync(resolved)) {
-      process.stderr.write(`\ndetected marble KG at ${resolved}\n`);
-      const useIt = await askYesNo("use this?", { default: true });
-      if (useIt) return resolved;
+      process.stderr.write(`\nmarble KG detected at ${resolved}\n`);
+      return resolved;
     }
   }
 
-  // Pass B: when --build-from is provided, we don't need an existing file —
-  // marble will create one at the default location.
-  if (buildingFromData) {
-    process.stderr.write(
-      `\n--build-from passed → will build a fresh marble KG at ${DEFAULT_KG_PATH}\n`,
-    );
-    return DEFAULT_KG_PATH;
-  }
-
+  // No existing KG anywhere — fall through. verifyPreflight() will build one
+  // by auto-discovering data sources on the laptop and feeding marble.
   process.stderr.write(
-    "\nno existing marble KG detected.\n" +
-      "  Option A: point us at an existing marble-kg.json file (--kg-path)\n" +
-      "  Option B: build one from your data file (--build-from <path>)\n",
+    `\nno existing marble KG — we'll build one at ${DEFAULT_KG_PATH} from whatever data we can find.\n`,
   );
-  const p = await ask("path to your marble-kg.json", {
-    validate: (v) => {
-      if (!v) return "required";
-      const r = expandHome(v);
-      if (!existsSync(r)) return `file not found: ${r}`;
-      return true;
-    },
-  });
-  return expandHome(p);
+  return DEFAULT_KG_PATH;
 }
 
 function redact(token) {
@@ -399,6 +407,15 @@ function hostnameLabel() {
   } catch {
     return "laptop";
   }
+}
+
+/** Pretty bytes for the discovery listing. e.g. 1.2 MB / 340 KB / 87 KB. */
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return "?";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 // Reference CONFIG_DIR so it's clearly a dependency even though we only use it via ensureConfigDir.

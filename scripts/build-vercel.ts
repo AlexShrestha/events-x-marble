@@ -30,11 +30,10 @@ const result = await build({
   target: "node22",
   format: "esm",
   // Node runtime — let Vercel install deps from package.json, keep them external.
-  // Excludes the few deps that won't reach the Vercel deploy anyway.
   // Bundle libsql inline (it has optional WS sub-deps that Vercel's installer
   // skips, causing missing-module errors). Keep heavyweight node-only deps
-  // that aren't reached in the request path external (nodemailer, playwright).
-  external: ["nodemailer", "playwright", "node:*"],
+  // that aren't reached in the request path external (playwright).
+  external: ["playwright", "node:*"],
   banner: {
     js: [
       "import { createRequire as __createRequire } from 'node:module';",

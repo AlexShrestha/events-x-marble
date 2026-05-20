@@ -29,8 +29,8 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
           <p class="kicker">one command · ~5–8 min</p>
           <h1>connect your marble</h1>
           <p class="lede">
-            Your knowledge graph and LLM key stay on your laptop — we only see
-            the sanitized picks payload you push each week.
+            Your graph and your key stay on your laptop. We see only what you
+            push.
           </p>
         </section>
 
@@ -44,18 +44,13 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
                 <span class="meta-warn"> · macOS &amp; Linux only</span>
               ) : null}
             </span>
-            <span class="meta-chip">
+            {/* City chip only renders when the edge actually resolved one — no blunt assumption. */}
+            <span class="meta-chip" id="cityChip" style={geo.city ? "" : "display:none"}>
               <span class="meta-label">city</span>
               <span class="meta-value" id="cityValue">
-                {geo.city ?? "detecting…"}
+                {geo.city ?? ""}
               </span>
             </span>
-            {geo.country ? (
-              <span class="meta-chip dim">
-                <span class="meta-label">country</span>
-                <span class="meta-value">{geo.country}</span>
-              </span>
-            ) : null}
           </div>
 
           <div class="cmd-wrap">
@@ -293,7 +288,13 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
       sessionId = b.session_id;
       try { localStorage.setItem('exm.connectSession', sessionId); } catch(e){}
       renderCmd(sessionId);
-      if (cityValue && b.geo && b.geo.city) cityValue.textContent = b.geo.city;
+      // Reveal the city chip ONLY when the edge actually resolved a city —
+      // we don't presume on the user when geo data is incomplete.
+      var cityChip = document.getElementById('cityChip');
+      if (cityValue && cityChip && b.geo && b.geo.city) {
+        cityValue.textContent = b.geo.city;
+        cityChip.style.display = '';
+      }
       startPolling();
     })
     .catch(function(err){

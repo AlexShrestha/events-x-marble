@@ -75,28 +75,13 @@ app.get("/", async (c) => {
     return c.redirect(`/me${url.search}`, 302);
   }
 
-  // Render landing — show a small "N public events in Barcelona" tease.
-  const all = await listCities();
-  const barcelona = all.find((c) => c.slug === "barcelona") ?? all[0] ?? null;
-  let eventCount = 0;
-  if (barcelona) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekAhead = new Date(today.getTime() + 7 * 86_400_000);
-    try {
-      const rows = await listEvents({
-        citySlug: barcelona.slug,
-        from: today.toISOString(),
-        to: weekAhead.toISOString(),
-        limit: 500,
-        offset: 0,
-      });
-      eventCount = rows.length;
-    } catch {
-      eventCount = 0;
-    }
-  }
-  return c.html(<Landing eventCount={eventCount} cityName={barcelona?.name ?? "Barcelona"} />);
+  // Render landing — no city-specific CTA. We don't assume the visitor cares
+  // about Barcelona just because that's the only seeded city.
+  const { geoFromHeaders } = await import("./lib/geo.ts");
+  const geo = geoFromHeaders(c.req.raw.headers);
+  return c.html(
+    <Landing geo={{ city: geo.city, country: geo.country }} />,
+  );
 });
 
 /** Personalized view (cookie-gated). Anonymous → /connect. Not-yet-ready → onboarding state view. */

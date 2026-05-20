@@ -2,28 +2,23 @@ import type { FC } from "hono/jsx";
 import { BASE_CSS, Footer, NavBar, Page, PageHead, SectionLabel } from "./theme.tsx";
 
 interface Props {
-  eventCount: number;
-  cityName: string;
+  /**
+   * Geo from Vercel edge headers — if absent (dev / non-Vercel), we don't
+   * presume to show "N events in X" because we have no idea where the
+   * visitor is. The hero stays clean, single-CTA.
+   */
+  geo?: {
+    city: string | null;
+    country: string | null;
+  };
 }
 
-/**
- * Landing page — aligned to timesmarble.com editorial design.
- *
- * Structure (mirrors timesmarble.com's section pattern):
- *   nav
- *   hero          (h1 + abstract sub + CTA)
- *   001 — abstract
- *   01  — what it does
- *   02  — what stays local
- *   03  — install
- *   footer
- */
-export const Landing: FC<Props> = ({ eventCount, cityName }) => (
+export const Landing: FC<Props> = ({ geo }) => (
   <html lang="en">
     <head>
       <PageHead
-        title="events × marble — hyper-personal event discovery"
-        description="A personalization graph for your city. Marble scores every upcoming event in your city against your local knowledge graph. Only the irresistible ones reach you."
+        title="events × marble"
+        description="Your week, judged by your graph. Silenced unless something crosses the bar."
       />
       <style>{BASE_CSS}</style>
       <style>{LANDING_CSS}</style>
@@ -33,75 +28,63 @@ export const Landing: FC<Props> = ({ eventCount, cityName }) => (
         <NavBar activePath="/" />
 
         <section class="hero">
-          <div class="section-num">
-            <span class="num">001</span>
-            <span class="dash">—</span>
-            <span>abstract</span>
-          </div>
-          <p class="kicker">your city · your knowledge graph · zero noise</p>
+          <p class="kicker">a subdomain of ×marble</p>
           <h1>
-            Events you'd <em>die</em>
+            The events worth
             <br />
-            to go to.
+            showing up for.
           </h1>
           <p class="lede">
-            Marble turns your reading + chat history into a living personalization
-            graph, then scores every upcoming event in your city against it.
-            Only the irresistible ones reach you. Silence is the feature.
+            Your marble decides. Most weeks, the answer is silence.
           </p>
           <div class="cta-row">
             <a href="/connect" class="btn">connect your marble →</a>
-            <a href="/events" class="btn btn-ghost">
-              {eventCount} public events in {cityName} →
-            </a>
           </div>
         </section>
 
         <section class="block">
-          <SectionLabel num="01" title="what it does" />
+          <SectionLabel num="01" title="selection" />
           <div class="grid">
             <div class="grid-item">
-              <h3>cold-start in one command</h3>
+              <h3>weekly verdict</h3>
               <p>
-                Paste a single line. We install events × marble locally, bootstrap
-                a marble knowledge graph from your data, and link your laptop to
-                the site. ~5–8 min.
+                Marble grades each upcoming event against your graph.
+                Most don't pass.
               </p>
             </div>
             <div class="grid-item">
-              <h3>scores every event against you</h3>
+              <h3>local-only</h3>
               <p>
-                Each week, your laptop pulls the upcoming event corpus, scores
-                it against your KG using your own LLM key, and pushes a sanitized
-                "picks" payload to this site.
+                Graph, model, scoring — all on your laptop. We see only the
+                picks.
               </p>
             </div>
             <div class="grid-item">
-              <h3>silence when nothing fits</h3>
+              <h3>silence is the default</h3>
               <p>
-                No anniversary alerts. No "people you may know". If nothing crosses
-                the irresistibility threshold this week, you see nothing.
+                Most weeks reach you empty. That's the bar working.
               </p>
             </div>
             <div class="grid-item">
-              <h3>your KG is yours</h3>
+              <h3>reasons attached</h3>
               <p>
-                Your raw beliefs, identities, preferences, and LLM API key never
-                touch our servers. Only the sanitized weekly picks reach Turso.
+                Each pick names the specific interest, belief, or identity it
+                matched. No black box.
               </p>
             </div>
           </div>
         </section>
 
         <section class="block">
-          <SectionLabel num="02" title="what stays local" />
+          <SectionLabel num="02" title="boundary" />
+          <p class="block-lede">We hold less than you'd think.</p>
           <table class="stays">
             <tr>
               <td class="cell-stays">stays on your laptop</td>
               <td class="cell-leaves">reaches our server</td>
             </tr>
             <tr>
-              <td>raw marble KG (beliefs, identities, preferences)</td>
+              <td>your raw knowledge graph</td>
               <td>—</td>
             </tr>
             <tr>
@@ -109,59 +92,54 @@ export const Landing: FC<Props> = ({ eventCount, cityName }) => (
               <td>—</td>
             </tr>
             <tr>
-              <td>your data ingest file (chat / journal / notes)</td>
+              <td>any data you let marble learn from</td>
               <td>—</td>
             </tr>
             <tr>
               <td>—</td>
-              <td>~12 interest labels, weekly</td>
+              <td>~12 coarse interest labels</td>
             </tr>
             <tr>
               <td>—</td>
-              <td>top picks (event ids + 120-char rationales)</td>
+              <td>top picks (ids + 120-char reasons)</td>
             </tr>
             <tr>
               <td>—</td>
-              <td>3-color accent palette derived from KG</td>
+              <td>3-color accent derived from your graph</td>
             </tr>
           </table>
         </section>
 
         <section class="block">
-          <SectionLabel num="03" title="install" />
-          <p class="install-lede">
-            Three steps. ~5–8 minutes. Your browser tab auto-advances as the
-            laptop checks in.
-          </p>
+          <SectionLabel num="03" title="connect" />
+          <p class="block-lede">One command. Five minutes. The tab tells you when you're in.</p>
           <ol class="install-steps">
             <li>
               <span class="step-num">i</span>
               <div>
-                <strong>visit /connect</strong>
+                <strong>open /connect</strong>
                 <p>
-                  We auto-detect your city from your browser location. No
-                  questions, no pickers.
+                  We detect your location from the edge. No pickers, no questions.
                 </p>
               </div>
             </li>
             <li>
               <span class="step-num">ii</span>
               <div>
-                <strong>paste one command</strong>
+                <strong>paste one line</strong>
                 <p>
                   The installer pulls events × marble + marble onto your
-                  laptop, builds your KG from your data, scores this week's
-                  events.
+                  laptop, builds your graph from your data, scores this week.
                 </p>
               </div>
             </li>
             <li>
               <span class="step-num">iii</span>
               <div>
-                <strong>tab auto-redirects to /me</strong>
+                <strong>your tab redirects</strong>
                 <p>
-                  When your laptop finishes, your dashboard is ready. No URL
-                  pasting. No tokens to copy.
+                  When the laptop is done, the dashboard is ready. No URLs to
+                  copy, no tokens to paste.
                 </p>
               </div>
             </li>
@@ -177,6 +155,12 @@ export const Landing: FC<Props> = ({ eventCount, cityName }) => (
   </html>
 );
 
+// Keep the geo param's signature so callers can pass it; we just don't
+// surface a city-specific CTA on the hero today. If we add a "your city's
+// events →" CTA later, it'll be gated behind a high-confidence geo match
+// AND an explicit user permission gesture, not blunt browser-IP detection.
+void Landing;
+
 const LANDING_CSS = `
   .hero { padding: 24px 0 80px; }
   .hero .kicker {
@@ -184,31 +168,38 @@ const LANDING_CSS = `
     color: var(--muted); text-transform: lowercase;
     letter-spacing: 0.08em; margin-bottom: 32px;
   }
-  .hero h1 em {
-    font-style: italic; font-weight: 400; color: var(--fg-2);
+  .hero h1 {
+    font-weight: 300;
   }
   .hero .lede {
-    font-size: 18px; line-height: 1.6;
-    max-width: 580px; margin: 36px 0 0 0; color: var(--fg-2);
+    font-family: var(--serif);
+    font-size: 22px; font-weight: 300; font-style: italic;
+    line-height: 1.35; max-width: 540px;
+    margin: 36px 0 0 0; color: var(--fg-2);
   }
   .cta-row {
     display: flex; gap: 12px; flex-wrap: wrap; margin-top: 48px;
   }
 
   .block { padding: 64px 0; border-top: 1px solid var(--line); }
+  .block-lede {
+    font-family: var(--serif); font-size: 20px; font-style: italic;
+    color: var(--fg-2); margin: 0 0 32px 0; max-width: 540px;
+    line-height: 1.4;
+  }
 
   .grid {
     display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
     background: var(--line);
-    border: 1px solid var(--line); margin-top: 24px;
+    border: 1px solid var(--line); margin-top: 32px;
   }
   .grid-item { background: var(--bg); padding: 32px 28px; }
   .grid-item h3 {
     font-family: var(--sans); font-size: 14px; font-weight: 500;
-    text-transform: lowercase; letter-spacing: 0.01em;
+    text-transform: lowercase; letter-spacing: 0;
     margin: 0 0 12px 0;
   }
-  .grid-item p { font-size: 14px; color: var(--fg-2); }
+  .grid-item p { font-size: 14px; color: var(--fg-2); line-height: 1.55; }
   @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
 
   .stays {
@@ -228,7 +219,6 @@ const LANDING_CSS = `
   .stays tr:first-child td { border-top: 1px solid var(--line); }
   .stays tr:nth-child(2) td { padding-top: 24px; }
 
-  .install-lede { font-size: 15px; color: var(--fg-2); margin-bottom: 32px; max-width: 540px; }
   .install-steps {
     list-style: none; padding: 0; margin: 0;
     border-top: 1px solid var(--line);

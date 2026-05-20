@@ -62,6 +62,68 @@ export const Connect: FC<Props> = ({ os, siteUrl }) => {
               </button>
             </div>
             <p class="hint">Open Terminal · paste this line · hit Enter.</p>
+
+            <details class="advanced">
+              <summary>Don't have a marble knowledge graph yet?</summary>
+              <div class="advanced-body">
+                <p>
+                  No problem — events-x-marble can build one for you from any
+                  text export you have (Claude/ChatGPT history, journal,
+                  notes). Prefix the install command with
+                  <code>EXM_BUILD_FROM</code>:
+                </p>
+                <div class="cmd-wrap">
+                  <pre class="cmd cmd-mini" id="cmdAlt" data-template={`EXM_BUILD_FROM=~/Downloads/your-data.json curl -fsSL ${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__ | bash`}>
+                    <span class="prompt">$ </span>
+                    <span class="cmd-body" id="cmdAltBody">
+                      EXM_BUILD_FROM=~/Downloads/your-data.json{" "}
+                      curl -fsSL {siteUrl.replace(/\/$/, "")}/install?session=
+                      <span class="ph">…</span> | bash
+                    </span>
+                  </pre>
+                  <button class="copy" id="copyAltBtn" type="button">Copy</button>
+                </div>
+                <ul class="caveats">
+                  <li>
+                    Supported formats: <code>.json</code> (chat export or
+                    episodes), <code>.txt</code>/<code>.md</code> (any prose).
+                  </li>
+                  <li>
+                    The knowledge-graph build takes <strong>3–5 minutes</strong>
+                    (your laptop runs marble's ingest + learn locally). This
+                    page shows live progress.
+                  </li>
+                  <li>
+                    Bigger / richer input = better picks. A 6-month chat
+                    history works great; a 5-line file will not.
+                  </li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="advanced">
+              <summary>Prerequisites your laptop needs</summary>
+              <div class="advanced-body">
+                <ul class="caveats">
+                  <li>
+                    macOS or Linux (Windows isn't supported yet).
+                  </li>
+                  <li>
+                    Node.js 18 or later (<code>brew install node</code> on macOS).
+                  </li>
+                  <li>
+                    Git (<code>xcode-select --install</code> on macOS).
+                  </li>
+                  <li>
+                    An LLM API key in your shell — one of{" "}
+                    <code>OPENCODE_API_KEY</code>,{" "}
+                    <code>ANTHROPIC_API_KEY</code>, or{" "}
+                    <code>OPENAI_API_KEY</code>. (OpenCode Zen recommended for
+                    cost: <a href="https://opencode.ai/zen" target="_blank" rel="noopener">opencode.ai/zen</a>.)
+                  </li>
+                </ul>
+              </div>
+            </details>
           </section>
 
           <section class="step" id="step2">
@@ -115,16 +177,22 @@ export const Connect: FC<Props> = ({ os, siteUrl }) => {
   var cmdBody = document.getElementById('cmdBody');
   var cmdEl   = document.getElementById('cmd');
   var copyBtn = document.getElementById('copyBtn');
+  var cmdAltBody = document.getElementById('cmdAltBody');
+  var cmdAltEl   = document.getElementById('cmdAlt');
+  var copyAltBtn = document.getElementById('copyAltBtn');
   var statusText = document.getElementById('statusText');
   var spinner = document.getElementById('spinner');
   var step2   = document.getElementById('step2');
   var pollHandle = null;
   var sessionId = null;
   var template = cmdEl.getAttribute('data-template');
+  var templateAlt = cmdAltEl ? cmdAltEl.getAttribute('data-template') : null;
 
   function renderCmd(sid){
-    var line = template.replace('__SESSION__', sid);
-    cmdBody.textContent = line;
+    cmdBody.textContent = template.replace('__SESSION__', sid);
+    if (cmdAltBody && templateAlt) {
+      cmdAltBody.textContent = templateAlt.replace('__SESSION__', sid);
+    }
   }
   function setStatus(text, kind){
     statusText.textContent = text;
@@ -143,8 +211,7 @@ export const Connect: FC<Props> = ({ os, siteUrl }) => {
       step2.classList.add('block');
     }
   }
-  copyBtn.addEventListener('click', function(){
-    var text = cmdBody.textContent.trim();
+  function copyText(text, btn){
     if (!navigator.clipboard) {
       var ta = document.createElement('textarea');
       ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
@@ -154,9 +221,18 @@ export const Connect: FC<Props> = ({ os, siteUrl }) => {
     } else {
       navigator.clipboard.writeText(text);
     }
-    copyBtn.textContent = 'Copied';
-    setTimeout(function(){ copyBtn.textContent='Copy'; }, 1400);
+    var orig = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(function(){ btn.textContent = orig; }, 1400);
+  }
+  copyBtn.addEventListener('click', function(){
+    copyText(cmdBody.textContent.trim(), copyBtn);
   });
+  if (copyAltBtn) {
+    copyAltBtn.addEventListener('click', function(){
+      copyText(cmdAltBody.textContent.trim(), copyAltBtn);
+    });
+  }
 
   var STATE_LABEL = {
     new:           'Connecting your laptop…',
@@ -388,6 +464,27 @@ const css = `
   .status-text .err-help a { color: var(--accent); }
   .status-text code { font-size: 11px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .advanced { margin-top: 16px; }
+  .advanced summary {
+    color: var(--fg-2); font-size: 13px; cursor: pointer;
+    padding: 6px 0; user-select: none;
+    border-top: 1px dashed var(--border);
+    padding-top: 12px; margin-top: 8px;
+  }
+  .advanced summary:hover { color: var(--fg); }
+  .advanced[open] summary { color: var(--fg); }
+  .advanced-body { padding: 8px 0 4px 0; }
+  .advanced-body p { color: var(--fg-2); font-size: 13px; margin: 0 0 12px 0; }
+  .advanced-body .caveats { margin: 8px 0 0 0; padding: 0; list-style: none; }
+  .advanced-body .caveats li {
+    padding: 6px 0; color: var(--fg-2); font-size: 13px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .advanced-body .caveats li:last-child { border-bottom: 0; }
+  .advanced-body .caveats a { color: var(--accent); }
+
+  .cmd-mini { padding: 14px 76px 14px 14px; font-size: 12px; }
 
   .reassurance {
     margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border);

@@ -172,13 +172,17 @@ if [ -n "\${EXM_KG_PATH:-}" ]; then
   EXTRA_ARGS+=(--kg-path "\${EXM_KG_PATH}")
 fi
 
+# Safe array expansion under \`set -u\` — bash 3.2 (macOS default) treats
+# "\${EXTRA_ARGS[@]}" on an empty array as "unbound variable" and aborts. The
+# \${arr[@]+"\${arr[@]}"} idiom expands to the array when it has elements and
+# to NOTHING otherwise, which is what we want.
 exec < "\${STDIN_SRC}" "\${CLI_DIR}/bin/exm.mjs" init \\
   --site-url "\${SITE_URL}" \\
   ${sessionArg} \\
   ${cityArg} \\
   --no-cron \\
   --auto-first-run \\
-  "\${EXTRA_ARGS[@]}"
+  \${EXTRA_ARGS[@]+"\${EXTRA_ARGS[@]}"}
 `;
 }
 

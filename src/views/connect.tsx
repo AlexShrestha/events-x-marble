@@ -59,12 +59,12 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
             <pre
               class="cmd"
               id="cmd"
-              data-template={`curl -fsSL ${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__ | bash`}
+              data-template={`curl -fsSL '${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__' | bash`}
             >
               <span class="prompt">$ </span>
               <span class="cmd-body" id="cmdBody">
-                curl -fsSL {siteUrl.replace(/\/$/, "")}/install?session=
-                <span class="ph">…</span> | bash
+                {`curl -fsSL '${siteUrl.replace(/\/$/, "")}/install?session=`}
+                <span class="ph">…</span>{`' | bash`}
               </span>
             </pre>
             <button class="copy" id="copyBtn" type="button">copy</button>
@@ -127,13 +127,12 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
                 <pre
                   class="cmd cmd-mini"
                   id="cmdAlt"
-                  data-template={`EXM_BUILD_FROM=~/path/to/your-data.json curl -fsSL ${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__ | bash`}
+                  data-template={`EXM_BUILD_FROM=~/path/to/your-data.json curl -fsSL '${siteUrl.replace(/\/$/, "")}/install?session=__SESSION__' | bash`}
                 >
                   <span class="prompt">$ </span>
                   <span class="cmd-body" id="cmdAltBody">
-                    EXM_BUILD_FROM=~/path/to/your-data.json{" "}
-                    curl -fsSL {siteUrl.replace(/\/$/, "")}/install?session=
-                    <span class="ph">…</span> | bash
+                    {`EXM_BUILD_FROM=~/path/to/your-data.json curl -fsSL '${siteUrl.replace(/\/$/, "")}/install?session=`}
+                    <span class="ph">…</span>{`' | bash`}
                   </span>
                 </pre>
                 <button class="copy" id="copyAltBtn" type="button">copy</button>

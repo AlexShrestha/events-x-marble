@@ -35,7 +35,7 @@
  *                           passed through register() so the polling browser
  *                           tab auto-detects the registration and lands on /me.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -369,31 +369,119 @@ async function pickProvider(flags) {
   return { provider, llmApiKeyEnv };
 }
 
+/**
+ * Find an existing marble knowledge-graph file the user already has on this
+ * laptop, OR fall through and let verifyPreflight build a fresh one.
+ *
+ * We look in:
+ *   1. flags["kg-path"]                            (explicit override)
+ *   2. $MARBLE_STORAGE                              (env override)
+ *   3. ~/.events-x-marble/marble-kg.json            (our canonical location)
+ *   4. ./marble-kg.json                             (cwd, marble's own default)
+ *   5. ~/marble-kg.json                             (home dir)
+ *   6. ~/Downloads/*marble-kg*.json                 (exported KG from marble CLI)
+ *   7. ~/Downloads/*-marble-kg.json,                (named variants like alex-marble-kg)
+ *      ~/Downloads/*-marble-kg-full.json
+ *
+ * Each candidate is shape-validated — must be JSON with a `user` object that
+ * carries at least one of (interests | beliefs | preferences | identities).
+ * Random JSON in Downloads (e.g. a chatgpt export) won't be mistaken for a KG.
+ *
+ * This is a meaningful UX win: users who have a marble KG already skip the
+ * 5-8 minute ingest+learn pipeline entirely — `events-x-marble run` just
+ * scores against the existing file.
+ */
 async function pickKgPath(flags) {
-  // Explicit override always wins.
   if (flags["kg-path"]) return expandHome(flags["kg-path"]);
 
-  // Otherwise, check the three standard locations. If any exists, use it.
-  const candidates = [
+  const home = os.homedir();
+  const downloads = path.join(home, "Downloads");
+
+  // Tier 1: exact paths we control.
+  const exactCandidates = [
     process.env.MARBLE_STORAGE,
     DEFAULT_KG_PATH,
     path.join(process.cwd(), "marble-kg.json"),
+    path.join(home, "marble-kg.json"),
   ].filter(Boolean);
-
-  for (const c of candidates) {
+  for (const c of exactCandidates) {
     const resolved = expandHome(c);
-    if (existsSync(resolved)) {
-      process.stderr.write(`\nmarble KG detected at ${resolved}\n`);
+    if (existsSync(resolved) && isLikelyMarbleKg(resolved)) {
+      process.stderr.write(`\n✓ marble KG detected at ${resolved}\n`);
+      process.stderr.write(`  skipping the 5–8 min KG build — we'll use this directly.\n`);
       return resolved;
+    }
+  }
+
+  // Tier 2: glob ~/Downloads for marble-kg-shaped filenames. We don't walk
+  // beyond ~/Downloads to keep the scan fast and predictable.
+  if (existsSync(downloads)) {
+    try {
+      const entries = readdirSync(downloads);
+      const matches = entries
+        .filter((f) => {
+          const lower = f.toLowerCase();
+          if (!lower.endsWith(".json")) return false;
+          // Match: marble-kg.json, alex-marble-kg.json, alex-marble-kg-full.json,
+          //        my-marble-kg-2025.json, etc.
+          return /marble[-_]?kg/.test(lower) || /marble[-_]?graph/.test(lower);
+        })
+        .map((f) => path.join(downloads, f))
+        .filter((p) => isLikelyMarbleKg(p))
+        // Prefer larger files (more signal) when multiple match.
+        .sort((a, b) => safeStatSize(b) - safeStatSize(a));
+
+      if (matches.length > 0) {
+        const chosen = matches[0];
+        process.stderr.write(`\n✓ marble KG detected at ${chosen}\n`);
+        if (matches.length > 1) {
+          process.stderr.write(
+            `  (also found ${matches.length - 1} other candidate(s); using the largest)\n`,
+          );
+        }
+        process.stderr.write(`  skipping the 5–8 min KG build — we'll use this directly.\n`);
+        return chosen;
+      }
+    } catch {
+      // best-effort scan
     }
   }
 
   // No existing KG anywhere — fall through. verifyPreflight() will build one
   // by auto-discovering data sources on the laptop and feeding marble.
   process.stderr.write(
-    `\nno existing marble KG — we'll build one at ${DEFAULT_KG_PATH} from whatever data we can find.\n`,
+    `\nno existing marble KG found — we'll build one at ${DEFAULT_KG_PATH} from whatever data we can discover.\n`,
   );
   return DEFAULT_KG_PATH;
+}
+
+/**
+ * Validate a candidate file is shaped like a marble KG. The kg-loader.ts
+ * accepts three shapes — { user: {...} }, { kg: { user: {...} } }, or a
+ * flattened user object. We peek the first 8 KB so giant chat-history JSONs
+ * (which can be 30+ MB) don't slow startup.
+ */
+function isLikelyMarbleKg(p) {
+  try {
+    const stat = statSync(p);
+    if (!stat.isFile() || stat.size < 64) return false;
+    // Peek first 8 KB. A real marble KG always has a `user` key near the top,
+    // OR is a flat object with beliefs/preferences/identities/interests.
+    const peek = readFileSync(p, { encoding: "utf8" }).slice(0, 8192);
+    const t = peek.trimStart();
+    if (!t.startsWith("{")) return false;
+    return (
+      /"user"\s*:\s*\{/.test(peek) ||
+      /"kg"\s*:\s*\{/.test(peek) ||
+      /"(beliefs|preferences|identities|interests|syntheses|insights)"\s*:\s*\[/.test(peek)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safeStatSize(p) {
+  try { return statSync(p).size; } catch { return 0; }
 }
 
 function redact(token) {

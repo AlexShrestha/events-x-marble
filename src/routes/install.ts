@@ -83,6 +83,35 @@ case "$(uname -s)" in
 esac
 say "detected $OS"
 
+# ---- Pre-flight: existing marble KG? -------------------------------------
+# Before the 30s clone + npm install, scan a few common locations for an
+# existing marble KG. If found, we tell the user upfront so they know this
+# install will take ~1 min (just scoring) instead of ~5–8 min (full ingest +
+# learn pipeline). The init step will re-validate and actually use it.
+EXISTING_KG=""
+for candidate in \\
+  "\${HOME}/.events-x-marble/marble-kg.json" \\
+  "\${HOME}/marble-kg.json" \\
+  "\${HOME}/Downloads/marble-kg.json" \\
+  ; do
+  if [ -f "\$candidate" ]; then EXISTING_KG="\$candidate"; break; fi
+done
+# Glob ~/Downloads for *marble-kg*.json variants (e.g. alex-marble-kg-full.json).
+if [ -z "\$EXISTING_KG" ] && [ -d "\${HOME}/Downloads" ]; then
+  for candidate in "\${HOME}/Downloads"/*marble[-_]kg*.json "\${HOME}/Downloads"/*marble[-_]graph*.json; do
+    [ -f "\$candidate" ] || continue
+    EXISTING_KG="\$candidate"
+    break
+  done
+fi
+if [ -n "\$EXISTING_KG" ]; then
+  ok "found existing marble KG at \$EXISTING_KG"
+  say "fast path — we'll use it directly (no rebuild). Total time ~1 min."
+else
+  say "no existing marble KG found — we'll build one from your data (~5–8 min)."
+fi
+
+
 # ---- Prerequisite check: Node 18+ ----------------------------------------
 if ! command -v node >/dev/null 2>&1; then
   die "Node.js 18+ is required but not installed. Install it from https://nodejs.org/en/download (or via 'brew install node' on macOS) and re-run this installer."
@@ -168,8 +197,12 @@ fi
 if [ -n "\${EXM_CITY:-}" ]; then
   EXTRA_ARGS+=(--city "\${EXM_CITY}")
 fi
+# --kg-path takes priority order: env override > pre-flight bash scan > init's
+# own pickKgPath fallback. EXISTING_KG was populated above by the pre-flight.
 if [ -n "\${EXM_KG_PATH:-}" ]; then
   EXTRA_ARGS+=(--kg-path "\${EXM_KG_PATH}")
+elif [ -n "\$EXISTING_KG" ]; then
+  EXTRA_ARGS+=(--kg-path "\$EXISTING_KG")
 fi
 
 # Safe array expansion under \`set -u\` — bash 3.2 (macOS default) treats

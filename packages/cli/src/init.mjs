@@ -52,10 +52,14 @@ import { register } from "./server-client.mjs";
 import { report } from "./status-report.mjs";
 import { loadKg, kgCounts } from "./kg-load.mjs";
 
+// Env vars we auto-detect to short-circuit the provider prompt. Order
+// matches PROVIDER_ORDER below (openai → anthropic → opencode → openrouter).
+// "custom" has no auto-detect since LLM_API_KEY is ambiguous on its own.
 const KNOWN_KEY_ENVS = [
-  { provider: "opencode", envName: "OPENCODE_API_KEY" },
-  { provider: "anthropic", envName: "ANTHROPIC_API_KEY" },
   { provider: "openai", envName: "OPENAI_API_KEY" },
+  { provider: "anthropic", envName: "ANTHROPIC_API_KEY" },
+  { provider: "opencode", envName: "OPENCODE_API_KEY" },
+  { provider: "openrouter", envName: "OPENROUTER_API_KEY" },
 ];
 
 export async function run(args) {
@@ -73,7 +77,8 @@ export async function run(args) {
   process.stderr.write("\n=== events-x-marble setup ===\n\n");
 
   // --- 1. LLM provider + key env var
-  const { provider, llmApiKeyEnv, llmApiKeyValue } = await pickProvider(flags);
+  const { provider, llmApiKeyEnv, llmApiKeyValue, llmBaseUrl, llmModel } =
+    await pickProvider(flags);
 
   // --- 2. KG path. Auto-discovery handles the "no KG yet" case in
   //        verifyPreflight() — the path here just specifies WHERE the KG
@@ -149,6 +154,10 @@ export async function run(args) {
     // process.env, so future runs and the launchd cron work without env-var
     // propagation.
     ...(llmApiKeyValue ? { llm_api_key_value: llmApiKeyValue } : {}),
+    // For custom providers: save the base URL + model. resolveLlmConfig() in
+    // llm-providers.mjs picks these up when calling the LLM.
+    ...(llmBaseUrl ? { llm_base_url: llmBaseUrl } : {}),
+    ...(llmModel ? { llm_model: llmModel } : {}),
     city_slug: citySlug,
     kg_path: kgPath,
     display_name: displayName || null,
@@ -341,9 +350,13 @@ async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv, buildFrom, kgFormat 
 }
 
 async function pickProvider(flags) {
+  const { PROVIDERS, PROVIDER_ORDER } = await import("./llm-providers.mjs");
+
+  // CLI-flag override (used by automation).
   if (flags["llm-key-env"] && flags.provider) {
     return { provider: flags.provider, llmApiKeyEnv: flags["llm-key-env"] };
   }
+
   // Detect any pre-existing LLM key env var.
   const detected = KNOWN_KEY_ENVS.find((k) => process.env[k.envName]);
   if (detected) {
@@ -355,40 +368,56 @@ async function pickProvider(flags) {
       return { provider: detected.provider, llmApiKeyEnv: detected.envName };
     }
   }
-  const choices = [
-    "opencode      (OpenCode Zen — sk-...)",
-    "anthropic     (Anthropic API — sk-ant-...)",
-    "openai        (OpenAI API — sk-...)",
-  ];
-  process.stderr.write("\nLLM provider:\n");
-  choices.forEach((c, i) => process.stderr.write(`  ${i + 1}. ${c}\n`));
-  const pick = await ask("pick 1-3", {
-    default: "1",
-    validate: (v) => ["1", "2", "3"].includes(v) || "1, 2, or 3",
-  });
-  const provider = ["opencode", "anthropic", "openai"][Number(pick) - 1];
-  const defaultEnv = KNOWN_KEY_ENVS.find((k) => k.provider === provider).envName;
 
-  // If the env var is already set, we're done — power-user path stays clean.
+  // Show all five providers. PROVIDER_ORDER controls the display order
+  // (currently: openai · anthropic · opencode · openrouter · custom).
+  process.stderr.write("\nLLM provider:\n");
+  PROVIDER_ORDER.forEach((key, i) => {
+    const def = PROVIDERS[key];
+    const hint = def.keyHint ? ` — ${def.keyHint}` : "";
+    process.stderr.write(`  ${i + 1}. ${key.padEnd(11)} (${def.label}${hint})\n`);
+  });
+  const max = PROVIDER_ORDER.length;
+  const pick = await ask(`pick 1-${max}`, {
+    default: "1",
+    validate: (v) => {
+      const n = Number(v);
+      return (Number.isInteger(n) && n >= 1 && n <= max) || `1 through ${max}`;
+    },
+  });
+  const provider = PROVIDER_ORDER[Number(pick) - 1];
+  const def = PROVIDERS[provider];
+  const defaultEnv = def.keyEnv;
+
+  // The 'custom' branch needs base URL + model in addition to a key — handle it
+  // separately since the questions differ.
+  if (provider === "custom") {
+    return await pickCustomProvider({ def });
+  }
+
+  // Standard provider — env var or paste-now path.
   if (process.env[defaultEnv]) {
     process.stderr.write(`  ✓ ${defaultEnv} is set in your shell — using it.\n`);
     return { provider, llmApiKeyEnv: defaultEnv };
   }
 
-  // Otherwise, offer three concrete ways to supply the key. The most popular
-  // (recommended) path is "paste now" — saves into config.json (chmod 600),
-  // which also makes launchd cron Just Work without env-var propagation.
   process.stderr.write(`\n${defaultEnv} isn't set in your shell. Set it up:\n`);
   process.stderr.write(`  1. paste your key now — saved to ~/.events-x-marble/config.json (chmod 600)\n`);
   process.stderr.write(`  2. I'll export ${defaultEnv} in my shell before running\n`);
-  process.stderr.write(`  3. I don't have a key — open ${openCodeSignupUrl(provider)}\n`);
-  const setupChoice = await ask("pick 1-3", {
+  if (def.signupUrl) {
+    process.stderr.write(`  3. I don't have a key — open ${def.signupUrl}\n`);
+  }
+  const maxSetup = def.signupUrl ? 3 : 2;
+  const setupChoice = await ask(`pick 1-${maxSetup}`, {
     default: "1",
-    validate: (v) => ["1", "2", "3"].includes(v) || "1, 2, or 3",
+    validate: (v) => {
+      const n = Number(v);
+      return (Number.isInteger(n) && n >= 1 && n <= maxSetup) || `1 through ${maxSetup}`;
+    },
   });
 
   if (setupChoice === "1") {
-    const apiKey = await askSecret(`paste your ${providerLabel(provider)} key:`, {
+    const apiKey = await askSecret(`paste your ${def.label} key:`, {
       validate: (v) => {
         if (!v) return "required";
         if (v.length < 10) return "that doesn't look like a real key (too short)";
@@ -403,39 +432,54 @@ async function pickProvider(flags) {
     return { provider, llmApiKeyEnv: defaultEnv };
   }
 
-  // Option 3: open the signup page in their browser and then loop back.
-  const url = openCodeSignupUrl(provider);
-  process.stderr.write(`\nopening ${url} in your browser…\n`);
-  try {
-    const { spawnSync } = await import("node:child_process");
-    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-    spawnSync(opener, [url], { stdio: "ignore" });
-  } catch {
-    // best-effort; if it fails the user can copy/paste the URL themselves
+  // Option 3: open signup page, then loop back to paste.
+  if (def.signupUrl) {
+    process.stderr.write(`\nopening ${def.signupUrl} in your browser…\n`);
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      spawnSync(opener, [def.signupUrl], { stdio: "ignore" });
+    } catch {}
+    process.stderr.write(`\nonce you've got a key, paste it here:\n`);
+    const apiKey = await askSecret(`${def.label} key:`, {
+      validate: (v) => (v && v.length >= 10) || "required (looks too short to be a real key)",
+    });
+    return { provider, llmApiKeyEnv: defaultEnv, llmApiKeyValue: apiKey };
   }
-  process.stderr.write(`\nonce you've got a key, paste it here:\n`);
-  const apiKey = await askSecret(`${providerLabel(provider)} key:`, {
-    validate: (v) => (v && v.length >= 10) || "required (looks too short to be a real key)",
+
+  // Unreachable in practice — fall through to the env-var note.
+  return { provider, llmApiKeyEnv: defaultEnv };
+}
+
+/**
+ * Custom (OpenAI-compatible) provider flow. Asks for base URL, model, and
+ * API key. Saves all three into config so resolveLlmConfig() can route
+ * arbitrary OpenAI-compatible endpoints (Together, Fireworks, Groq, vLLM,
+ * local Ollama with auth, etc.).
+ */
+async function pickCustomProvider({ def }) {
+  process.stderr.write(`\nCustom OpenAI-compatible endpoint — used for any host that exposes /v1/chat/completions.\n`);
+  process.stderr.write(`  Examples: Together (api.together.xyz/v1), Fireworks, Groq, vLLM, Ollama, etc.\n\n`);
+  const baseUrl = await ask("base URL (e.g. https://api.together.xyz/v1)", {
+    validate: (v) => {
+      if (!v) return "required";
+      if (!/^https?:\/\//.test(v)) return "must start with http:// or https://";
+      return true;
+    },
   });
-  return { provider, llmApiKeyEnv: defaultEnv, llmApiKeyValue: apiKey };
-}
-
-function providerLabel(provider) {
-  switch (provider) {
-    case "opencode": return "OpenCode";
-    case "anthropic": return "Anthropic";
-    case "openai": return "OpenAI";
-    default: return provider;
-  }
-}
-
-function openCodeSignupUrl(provider) {
-  switch (provider) {
-    case "opencode": return "https://opencode.ai/zen";
-    case "anthropic": return "https://console.anthropic.com/settings/keys";
-    case "openai": return "https://platform.openai.com/api-keys";
-    default: return "https://opencode.ai/zen";
-  }
+  const model = await ask("model name (e.g. meta-llama/Llama-3.3-70B-Instruct-Turbo)", {
+    validate: (v) => (v && v.length >= 2) || "required",
+  });
+  const apiKey = await askSecret("API key for that endpoint:", {
+    validate: (v) => (v && v.length >= 8) || "required (looks too short)",
+  });
+  return {
+    provider: "custom",
+    llmApiKeyEnv: def.keyEnv,
+    llmApiKeyValue: apiKey,
+    llmBaseUrl: baseUrl.replace(/\/$/, ""),
+    llmModel: model,
+  };
 }
 
 /**

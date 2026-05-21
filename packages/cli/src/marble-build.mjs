@@ -68,7 +68,7 @@ export async function buildKgFromSources({ cfg, kgPath, sources }) {
 
   if (!process.env.EMBEDDINGS_PROVIDER) process.env.EMBEDDINGS_PROVIDER = "none";
 
-  const llmFn = buildLlmFn(cfg.llm_provider, apiKey);
+  const llmFn = await buildLlmFn(cfg, apiKey);
   const { Marble } = await import("marble");
 
   const marble = new Marble({
@@ -348,53 +348,16 @@ function commandExistsSync(cmd) {
 
 /**
  * Build the `(prompt: string) => Promise<string>` callable that marble's
- * constructor expects. Wraps OpenCode Zen / Anthropic's /v1/messages endpoint.
- *
- * Marble itself splits work between "heavy" (e.g. trait synthesis) and "fast"
- * (e.g. miner extraction) models, but at the user-llm contract level the
- * signature is a single text-in/text-out function. We use the same model for
- * both — keeps cost predictable and Haiku is fast enough for both passes.
+ * constructor expects. Delegates to llm-providers.mjs's universal dispatch
+ * so all five providers (openai / anthropic / opencode / openrouter /
+ * custom) are supported transparently — the right API format (OpenAI's
+ * /chat/completions vs Anthropic's /messages) is picked by provider.
  */
-function buildLlmFn(provider, apiKey) {
-  const PROVIDER_BASES = {
-    opencode: "https://opencode.ai/zen/v1",
-    anthropic: "https://api.anthropic.com/v1",
-  };
-  const DEFAULT_MODELS = {
-    opencode: process.env.MARBLE_LLM_MODEL || "claude-haiku-4-5",
-    anthropic: process.env.MARBLE_LLM_MODEL || "claude-haiku-4-5",
-  };
-  if (!(provider in PROVIDER_BASES)) {
-    throw new Error(
-      `marble-build: provider '${provider}' is not supported yet for KG bootstrapping ` +
-        "(only opencode and anthropic). Set --provider on init or use an existing KG.",
-    );
-  }
-  const base = PROVIDER_BASES[provider];
-  const model = DEFAULT_MODELS[provider];
-
+async function buildLlmFn(cfg, apiKey) {
+  const { resolveLlmConfig, callLlmText } = await import("./llm-providers.mjs");
+  const providerCfg = resolveLlmConfig(cfg);
   return async function llm(prompt) {
-    const res = await fetch(`${base}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(
-        `marble llm call: ${provider}/${model} HTTP ${res.status} ${text.slice(0, 200)}`,
-      );
-    }
-    const body = await res.json();
-    return body?.content?.[0]?.text ?? "";
+    return callLlmText({ providerCfg, apiKey, prompt, maxTokens: 4096 });
   };
 }
 

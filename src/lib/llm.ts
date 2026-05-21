@@ -149,7 +149,9 @@ async function callViaSdk(args: ChatCallArgs): Promise<ChatCallResult> {
   const system = args.messages.find(m => m.role === "system")?.content ?? "";
   const user = args.messages.filter(m => m.role !== "system").map(m => m.content).join("\n\n");
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 60_000);
+  // 60s was inherited from HTTP path; Sonnet/Haiku via SDK with bulky JSON
+  // responses needs more — was timing out scorer.ts mid-generation.
+  const timer = setTimeout(() => abort.abort(), 180_000);
 
   const sdkOptions: SdkOptions = {
     model: args.model,

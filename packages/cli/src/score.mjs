@@ -21,9 +21,11 @@ export async function scoreEvents({
   cityTimezone,
   notes,
   threshold = DEFAULT_THRESHOLD,
+  // LLM client config — see llm-providers.mjs PROVIDERS for valid combos.
   provider,
   apiKey,
   model,
+  baseUrl,
 }) {
   // Pre-filter by rarity_score so the LLM call stays bounded.
   const candidates =
@@ -81,6 +83,7 @@ export async function scoreEvents({
 
   const result = await callForJson({
     provider,
+    baseUrl,
     apiKey,
     model,
     systemPrompt,

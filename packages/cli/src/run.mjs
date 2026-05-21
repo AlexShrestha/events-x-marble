@@ -99,6 +99,9 @@ export async function run(args) {
       threshold,
       provider: cfg.llm_provider,
       apiKey,
+      // Honor custom base/model from config (e.g. for openrouter or own-key).
+      baseUrl: cfg.llm_base_url,
+      model: cfg.llm_model,
     });
   } catch (e) {
     const msg = (e.message ?? String(e)).slice(0, 400);

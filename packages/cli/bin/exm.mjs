@@ -33,12 +33,16 @@ Usage:
   events-x-marble init [--site-url URL] [--dry-run]
   events-x-marble run [--city SLUG] [--threshold 0.85] [--days 14] [--dry-run]
   events-x-marble status
+  events-x-marble update [--skip-deps] [--quiet]
   events-x-marble token rotate
   events-x-marble disconnect [--keep-config]
   events-x-marble cron-install [--uninstall]
   events-x-marble --help | --version
 
 Configuration lives at ~/.events-x-marble/config.json after \`init\`.
+\`update\` refreshes the local install (CLI + marble core) — run after a
+release. Doesn't touch your token, config, or KG.
+
 Run \`events-x-marble <command> --help\` for command-specific options.
 `;
 
@@ -55,6 +59,7 @@ const subcommands = {
   init: () => import("../src/init.mjs"),
   run: () => import("../src/run.mjs"),
   status: () => import("../src/status.mjs"),
+  update: () => import("../src/update.mjs"),
   token: () => import("../src/token.mjs"),
   disconnect: () => import("../src/disconnect.mjs"),
   "cron-install": () => import("../src/cron-install.mjs"),

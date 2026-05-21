@@ -164,6 +164,29 @@ export const Connect: FC<Props> = ({ os, siteUrl, geo }) => (
               </ul>
             </div>
           </details>
+
+          <details class="advanced">
+            <summary>keeping marble + events × marble up to date</summary>
+            <div class="advanced-body">
+              <p>
+                After install, refresh both at once with:
+              </p>
+              <pre class="cmd cmd-mini">
+                <span class="prompt">$ </span>events-x-marble update
+              </pre>
+              <p style="margin-top: 14px">
+                This <code>git fetch</code>es the latest events × marble code
+                and re-runs <code>npm install</code> — which pulls the
+                latest <code>marble</code> too (it's a git-URL dependency,
+                so each install grabs HEAD). Your token, config, and KG
+                stay put.
+              </p>
+              <p style="margin-top: 10px">
+                Re-run <code>events-x-marble run</code> after update to
+                score with the new marble.
+              </p>
+            </div>
+          </details>
         </section>
 
         <section class="step" id="step2">

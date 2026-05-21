@@ -23,6 +23,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveApiKey } from "./config.mjs";
 import { report } from "./status-report.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,9 +51,14 @@ export async function buildKgFromSources({ cfg, kgPath, sources }) {
     throw new Error("buildKgFromSources: at least one source required");
   }
 
-  const apiKey = process.env[cfg.llm_api_key_env];
-  if (!apiKey) {
-    throw new Error(`${cfg.llm_api_key_env} not set in env — required by marble for KG synthesis`);
+  // Resolve via the shared helper — accepts both config-stored key (paste-now
+  // flow) and env-var name (power-user flow). Throws with an actionable hint
+  // if neither is available.
+  let apiKey;
+  try {
+    apiKey = resolveApiKey(cfg);
+  } catch (e) {
+    throw new Error(`marble KG build needs an API key. ${e.message ?? e}`);
   }
 
   const marbleProvider = PROVIDER_MAP[cfg.llm_provider];

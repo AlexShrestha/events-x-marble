@@ -18,7 +18,15 @@ export async function run() {
   process.stdout.write(`  token        : ${redact(cfg.token)}\n`);
   process.stdout.write(`  city_slug    : ${cfg.city_slug}\n`);
   process.stdout.write(`  llm_provider : ${cfg.llm_provider}\n`);
-  process.stdout.write(`  llm key env  : ${cfg.llm_api_key_env} (${process.env[cfg.llm_api_key_env] ? "present" : "MISSING — set it!"})\n`);
+  // Key resolution: config-stored value wins, env var as fallback. Show which.
+  if (cfg.llm_api_key_value) {
+    process.stdout.write(`  llm key      : ${redact(cfg.llm_api_key_value)}  (stored in config, chmod 600)\n`);
+  } else {
+    const envPresent = process.env[cfg.llm_api_key_env];
+    process.stdout.write(
+      `  llm key env  : ${cfg.llm_api_key_env}  (${envPresent ? "present in shell" : "NOT SET in shell — export it, or re-run init"})\n`,
+    );
+  }
   process.stdout.write(`  created_at   : ${cfg.created_at}\n`);
   process.stdout.write(`  last_push_at : ${cfg.last_push_at ?? "(never)"}\n`);
 

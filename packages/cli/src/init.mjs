@@ -47,7 +47,7 @@ import {
   expandHome,
   saveConfig,
 } from "./config.mjs";
-import { ask, askYesNo, parseFlags } from "./prompt.mjs";
+import { ask, askSecret, askYesNo, parseFlags } from "./prompt.mjs";
 import { register } from "./server-client.mjs";
 import { report } from "./status-report.mjs";
 import { loadKg, kgCounts } from "./kg-load.mjs";
@@ -73,7 +73,7 @@ export async function run(args) {
   process.stderr.write("\n=== events-x-marble setup ===\n\n");
 
   // --- 1. LLM provider + key env var
-  const { provider, llmApiKeyEnv } = await pickProvider(flags);
+  const { provider, llmApiKeyEnv, llmApiKeyValue } = await pickProvider(flags);
 
   // --- 2. KG path. Auto-discovery handles the "no KG yet" case in
   //        verifyPreflight() — the path here just specifies WHERE the KG
@@ -144,6 +144,11 @@ export async function run(args) {
     token: registration.token,
     llm_provider: provider,
     llm_api_key_env: llmApiKeyEnv,
+    // If the user pasted their key during pickProvider's setup branch, save
+    // it (chmod 600 on the config file). resolveApiKey() prefers this over
+    // process.env, so future runs and the launchd cron work without env-var
+    // propagation.
+    ...(llmApiKeyValue ? { llm_api_key_value: llmApiKeyValue } : {}),
     city_slug: citySlug,
     kg_path: kgPath,
     display_name: displayName || null,
@@ -157,7 +162,9 @@ export async function run(args) {
   process.stderr.write(`  token   : ${redact(registration.token)} (full token saved to ${CONFIG_FILE})\n`);
   process.stderr.write(`  config  : ${CONFIG_FILE}\n`);
   process.stderr.write(`  kg path : ${kgPath}\n`);
-  process.stderr.write(`  llm     : ${provider} (key from $${llmApiKeyEnv})\n`);
+  process.stderr.write(
+    `  llm     : ${provider} ${llmApiKeyValue ? "(key stored in config, chmod 600)" : `(key from $${llmApiKeyEnv})`}\n`,
+  );
 
   if (connectSession && registration.connect_linked) {
     process.stderr.write(
@@ -241,9 +248,13 @@ export async function run(args) {
  *   - error        → with appropriate category
  */
 async function verifyPreflight({ cfg, kgPath, llmApiKeyEnv, buildFrom, kgFormat }) {
-  // 1. API key must be set in the user's env right now.
-  if (!process.env[llmApiKeyEnv]) {
-    const msg = `${llmApiKeyEnv} is not set in your shell — export it and re-run \`events-x-marble run\`.`;
+  // 1. API key must be available — either pasted into config during init
+  //    (chmod 600) OR set in the env right now. If neither, surface the
+  //    actionable hint rather than blowing up downstream.
+  const hasConfigKey = Boolean(cfg.llm_api_key_value);
+  const hasEnvKey = Boolean(process.env[llmApiKeyEnv]);
+  if (!hasConfigKey && !hasEnvKey) {
+    const msg = `no API key available — export ${llmApiKeyEnv} in your shell, or re-run \`events-x-marble init\` and pick "paste your key now".`;
     process.stderr.write(`\n! ${msg}\n`);
     await report({ cfg, state: "key_missing", message: msg });
     return;
@@ -357,16 +368,74 @@ async function pickProvider(flags) {
   });
   const provider = ["opencode", "anthropic", "openai"][Number(pick) - 1];
   const defaultEnv = KNOWN_KEY_ENVS.find((k) => k.provider === provider).envName;
-  const llmApiKeyEnv = await ask("env var name holding the API key", {
-    default: defaultEnv,
-    validate: (v) => /^[A-Z_][A-Z0-9_]*$/.test(v) || "uppercase ENV var name",
-  });
-  if (!process.env[llmApiKeyEnv]) {
-    process.stderr.write(
-      `  note: ${llmApiKeyEnv} is not set in your current shell — export it before running\n`,
-    );
+
+  // If the env var is already set, we're done — power-user path stays clean.
+  if (process.env[defaultEnv]) {
+    process.stderr.write(`  ✓ ${defaultEnv} is set in your shell — using it.\n`);
+    return { provider, llmApiKeyEnv: defaultEnv };
   }
-  return { provider, llmApiKeyEnv };
+
+  // Otherwise, offer three concrete ways to supply the key. The most popular
+  // (recommended) path is "paste now" — saves into config.json (chmod 600),
+  // which also makes launchd cron Just Work without env-var propagation.
+  process.stderr.write(`\n${defaultEnv} isn't set in your shell. Set it up:\n`);
+  process.stderr.write(`  1. paste your key now — saved to ~/.events-x-marble/config.json (chmod 600)\n`);
+  process.stderr.write(`  2. I'll export ${defaultEnv} in my shell before running\n`);
+  process.stderr.write(`  3. I don't have a key — open ${openCodeSignupUrl(provider)}\n`);
+  const setupChoice = await ask("pick 1-3", {
+    default: "1",
+    validate: (v) => ["1", "2", "3"].includes(v) || "1, 2, or 3",
+  });
+
+  if (setupChoice === "1") {
+    const apiKey = await askSecret(`paste your ${providerLabel(provider)} key:`, {
+      validate: (v) => {
+        if (!v) return "required";
+        if (v.length < 10) return "that doesn't look like a real key (too short)";
+        return true;
+      },
+    });
+    return { provider, llmApiKeyEnv: defaultEnv, llmApiKeyValue: apiKey };
+  }
+
+  if (setupChoice === "2") {
+    process.stderr.write(`  note: export ${defaultEnv}=… in your shell before running. The first scoring will fail until you do.\n`);
+    return { provider, llmApiKeyEnv: defaultEnv };
+  }
+
+  // Option 3: open the signup page in their browser and then loop back.
+  const url = openCodeSignupUrl(provider);
+  process.stderr.write(`\nopening ${url} in your browser…\n`);
+  try {
+    const { spawnSync } = await import("node:child_process");
+    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    spawnSync(opener, [url], { stdio: "ignore" });
+  } catch {
+    // best-effort; if it fails the user can copy/paste the URL themselves
+  }
+  process.stderr.write(`\nonce you've got a key, paste it here:\n`);
+  const apiKey = await askSecret(`${providerLabel(provider)} key:`, {
+    validate: (v) => (v && v.length >= 10) || "required (looks too short to be a real key)",
+  });
+  return { provider, llmApiKeyEnv: defaultEnv, llmApiKeyValue: apiKey };
+}
+
+function providerLabel(provider) {
+  switch (provider) {
+    case "opencode": return "OpenCode";
+    case "anthropic": return "Anthropic";
+    case "openai": return "OpenAI";
+    default: return provider;
+  }
+}
+
+function openCodeSignupUrl(provider) {
+  switch (provider) {
+    case "opencode": return "https://opencode.ai/zen";
+    case "anthropic": return "https://console.anthropic.com/settings/keys";
+    case "openai": return "https://platform.openai.com/api-keys";
+    default: return "https://opencode.ai/zen";
+  }
 }
 
 /**

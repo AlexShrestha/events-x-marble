@@ -8,6 +8,68 @@ function newRl() {
   return readline.createInterface({ input: process.stdin, output: process.stderr });
 }
 
+/**
+ * Prompt for a secret (API key, token, etc.). Echoes characters as `*` so
+ * the value doesn't appear in scrollback / over-shoulder. Trims whitespace.
+ *
+ * Works under /dev/tty (the path the install script's `exec < /dev/tty`
+ * routes through). Falls back to plain ask() if raw mode can't be enabled
+ * (rare — typically when stdin isn't a TTY, e.g. piped automation).
+ */
+export async function askSecret(question, { validate } = {}) {
+  const rl = newRl();
+  while (true) {
+    const value = await new Promise((resolve) => {
+      // Try masked input first. If stdin isn't TTY-capable we silently fall
+      // back to readline (visible input). Either way the value is returned.
+      if (process.stdin.isTTY && process.stdin.setRawMode) {
+        process.stderr.write(`${question} `);
+        const chars = [];
+        const onData = (buf) => {
+          for (const byte of buf) {
+            if (byte === 0x0d || byte === 0x0a) {
+              // Enter
+              process.stdin.removeListener("data", onData);
+              process.stdin.setRawMode(false);
+              process.stdin.pause();
+              process.stderr.write("\n");
+              resolve(chars.join("").trim());
+              return;
+            } else if (byte === 0x03) {
+              // Ctrl-C
+              process.stdin.setRawMode(false);
+              process.exit(130);
+            } else if (byte === 0x7f || byte === 0x08) {
+              // Backspace
+              if (chars.length > 0) {
+                chars.pop();
+                process.stderr.write("\b \b");
+              }
+            } else if (byte >= 0x20 && byte < 0x7f) {
+              chars.push(String.fromCharCode(byte));
+              process.stderr.write("*");
+            }
+          }
+        };
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.on("data", onData);
+      } else {
+        rl.question(`${question} `, (input) => resolve(input.trim()));
+      }
+    });
+    if (validate) {
+      const result = validate(value);
+      if (result !== true && result !== undefined) {
+        process.stderr.write(`  ${result}\n`);
+        continue;
+      }
+    }
+    rl.close();
+    return value;
+  }
+}
+
 export async function ask(question, { default: defaultValue, validate } = {}) {
   const rl = newRl();
   const suffix = defaultValue ? ` [${defaultValue}]` : "";

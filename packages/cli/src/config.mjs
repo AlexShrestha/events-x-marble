@@ -92,16 +92,33 @@ export function expandHome(p) {
   return p;
 }
 
-/** Resolve the API key from env, given the configured provider/env-name. */
+/**
+ * Resolve the API key for the configured LLM provider. Resolution priority:
+ *   1. cfg.llm_api_key_value   — stored in config.json (chmod 600), set by
+ *                                init's "paste your key now" flow. Also makes
+ *                                launchd cron work without env-var propagation.
+ *   2. process.env[cfg.llm_api_key_env]
+ *                              — env var name configured at init time.
+ *                                Power-user path; rotate via shell config.
+ *
+ * Throws with an actionable hint if neither is available.
+ */
 export function resolveApiKey(cfg) {
+  if (cfg.llm_api_key_value && typeof cfg.llm_api_key_value === "string") {
+    return cfg.llm_api_key_value;
+  }
   const envName = cfg.llm_api_key_env;
   if (!envName) {
-    throw new Error("llm_api_key_env not set in config — re-run `init`");
+    throw new Error(
+      "no API key configured — re-run `events-x-marble init` to set one up.",
+    );
   }
   const value = process.env[envName];
   if (!value) {
     throw new Error(
-      `env var ${envName} not set — export it before running, e.g.\n  export ${envName}=sk-...`,
+      `${envName} not set — either:\n` +
+        `  • export it in your shell, e.g.  export ${envName}=sk-...\n` +
+        `  • or re-run \`events-x-marble init\` and choose "paste your key now"`,
     );
   }
   return value;

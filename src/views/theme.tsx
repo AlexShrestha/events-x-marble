@@ -202,8 +202,16 @@ export const BASE_CSS = `
     color: var(--fg);
     white-space: pre-wrap; word-break: break-all;
   }
-  .cmd .prompt { color: var(--muted); user-select: none; margin-right: 4px; }
-  .cmd .ph     { color: var(--muted); }
+  /* user-select: none on the prompt + placeholder so when someone manually
+     selects the visible command (instead of clicking [copy]), their clipboard
+     gets ONLY the actual command — no '$ ' literal prefix, no '…' placeholder. */
+  .cmd .prompt {
+    color: var(--muted); user-select: none; -webkit-user-select: none;
+    margin-right: 4px;
+  }
+  .cmd .ph {
+    color: var(--muted); user-select: none; -webkit-user-select: none;
+  }
   .cmd-wrap { position: relative; }
   .copy {
     position: absolute; top: 12px; right: 12px;

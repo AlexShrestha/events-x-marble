@@ -1,4 +1,5 @@
 import { env } from "../env.ts";
+import { query, type Options as SdkOptions } from "@anthropic-ai/claude-agent-sdk";
 
 export interface LlmResult<T = unknown> {
   ok: boolean;
@@ -34,9 +35,11 @@ export interface ModelSpec {
 }
 
 export const DEFAULT_FREE_MODELS: ModelSpec[] = [
-  { id: "nemotron-3-super-free", reasoning: false, pricing: [0, 0] },
-  { id: "deepseek-v4-flash-free", reasoning: true, pricing: [0, 0] },
-  { id: "minimax-m2.5-free", reasoning: true, pricing: [0, 0] },
+  // Claude Haiku via Agent SDK — uses Claude Code subscription auth (no
+  // per-token billing while subscription is active). Replaces the
+  // rate-limited OpenCode free-tier cascade (minimax/deepseek/nemotron
+  // were all 429ing).
+  { id: "claude-haiku-4-5", reasoning: false, pricing: [1, 5] },
 ];
 
 export const HAIKU_FALLBACK: ModelSpec = {
@@ -53,11 +56,13 @@ const OPENCODE_BASE = () => env.OPENCODE_BASE_URL.replace(/\/$/, "");
  * No paid fallback — the plan says "skip and retry next week" on failure.
  */
 export async function extractJson<T>(opts: ExtractOpts<T>): Promise<LlmResult<T>> {
-  const key = opts.apiKey ?? env.OPENCODE_API_KEY;
-  if (!key) {
+  const models = opts.models ?? DEFAULT_FREE_MODELS;
+  // OpenCode key is only required if any non-Claude model is in the cascade.
+  const needsOpenCodeKey = models.some(m => !m.id.startsWith("claude-"));
+  const key = opts.apiKey ?? env.OPENCODE_API_KEY ?? "";
+  if (needsOpenCodeKey && !key) {
     return emptyResult({ error: "OPENCODE_API_KEY missing (no per-call apiKey override either)" });
   }
-  const models = opts.models ?? DEFAULT_FREE_MODELS;
   let lastError = "no models tried";
 
   for (const model of models) {
@@ -132,6 +137,61 @@ interface ChatCallResult {
 }
 
 async function callChatCompletion(args: ChatCallArgs): Promise<ChatCallResult> {
+  // Claude models → route through the Agent SDK (subscription auth, no API
+  // key needed). Anything else → OpenCode HTTP path (legacy free-tier).
+  if (args.model.startsWith("claude-")) {
+    return callViaSdk(args);
+  }
+  return callViaHttp(args);
+}
+
+async function callViaSdk(args: ChatCallArgs): Promise<ChatCallResult> {
+  const system = args.messages.find(m => m.role === "system")?.content ?? "";
+  const user = args.messages.filter(m => m.role !== "system").map(m => m.content).join("\n\n");
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 60_000);
+
+  const sdkOptions: SdkOptions = {
+    model: args.model,
+    cwd: process.cwd(),
+    maxTurns: 1,
+    permissionMode: "bypassPermissions",
+    allowedTools: [],
+    abortController: abort,
+    settingSources: [],
+    ...(system ? { systemPrompt: { type: "preset", preset: "claude_code", append: system } } : {}),
+  };
+
+  let text = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  try {
+    for await (const raw of query({ prompt: user, options: sdkOptions })) {
+      const m = raw as unknown as {
+        type: string;
+        message?: { content?: Array<{ type: string; text?: string }> };
+        result?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      if (m.type === "assistant" && m.message?.content) {
+        for (const part of m.message.content) {
+          if (part.type === "text" && part.text) text += part.text;
+        }
+      } else if (m.type === "result") {
+        if (m.result) text = m.result;
+        inputTokens = m.usage?.input_tokens ?? 0;
+        outputTokens = m.usage?.output_tokens ?? 0;
+      }
+    }
+  } catch (e) {
+    return { ok: false, text: "", usage: { input: 0, output: 0, total: 0 }, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    clearTimeout(timer);
+  }
+  return { ok: true, text, usage: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens } };
+}
+
+async function callViaHttp(args: ChatCallArgs): Promise<ChatCallResult> {
   try {
     const res = await fetch(`${OPENCODE_BASE()}/chat/completions`, {
       method: "POST",

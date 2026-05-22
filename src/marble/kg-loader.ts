@@ -1,7 +1,16 @@
 /**
- * Read-only loader for the local Marble KG.
+ * Read-only loader for the local Marble KG (server / Alex's-local-cron only).
  *
- * HARD INVARIANTS (mirror of marble-yt-mcp/src/kg.ts):
+ * NOT A FORK OF MARBLE'S LOGIC — this is a deliberately tiny JSON shape-reader
+ * that exists so the Vercel bundle doesn't have to pull in `@alexshrestha/marble`
+ * (and its embeddings/clones/clustering machinery) just to read the KG file
+ * that Alex's local cron pushes through `me-ics`. The Vercel runtime never sets
+ * MARBLE_KG_PATH, so this code is dead-code on the server — but it still has to
+ * bundle without errors. The full marble lib lives in `packages/cli/` where new
+ * users install events-x-marble and get every marble feature (insight grounding,
+ * clustering, link prediction, persisted vector index, ...).
+ *
+ * HARD INVARIANTS:
  *  - KG file is opened with fs.readFile only. NO WRITE PATHS exist in this module.
  *  - We deep-copy with structuredClone() so any in-memory mutation cannot leak back
  *    to the file via shared references.

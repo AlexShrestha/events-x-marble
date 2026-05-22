@@ -2,19 +2,37 @@
  * Marble black-box wrapper. Builds a marble KG from a user-supplied data file
  * without the user ever invoking the `marble` CLI or knowing it's there.
  *
- * Marble's `ingestConversations` / `ingestEpisodes` require an `llm` function
- * passed to the constructor (env-based provider discovery only kicks in for
- * `learn()` and a few internals). So we build a small wrapper that translates
- * marble's `async (prompt) => string` contract into OpenCode/Anthropic HTTP
- * calls using the user's API key.
+ * Depends on @alexshrestha/marble@^0.2.0 (the npm package — until it lands on
+ * the public registry, the dep is pinned to `file:../../GitHub/marble` /
+ * `github:AlexShrestha/marble`). All scoring/clone/inference logic lives in
+ * marble; events-x-marble owns only:
+ *   - source discovery (discover-data.mjs)
+ *   - per-file format dispatch (this file's ingestOne / detectFormat)
+ *   - the LLM-fn shim that maps marble's `(prompt) => string` contract to
+ *     events-x-marble's 5-provider registry (llm-providers.mjs)
+ *   - the rent-payload sanitizer (derive-payload.mjs)
  *
- * Lifecycle:
- *   1. detectFormat(dataPath)        — chat-export JSON vs episodes JSON vs text
- *   2. report('ingesting')           — server logs the transition; /connect shows progress
- *   3. marble.init() + ingest…       — marble persists the KG to `storage` (~/.events-x-marble/marble-kg.json)
+ * Lifecycle (marble 0.2.0+):
+ *   1. detectFormat(dataPath)       — chat-export JSON vs episodes JSON vs text
+ *   2. report('ingesting')          — server logs the transition; /connect shows progress
+ *   3. marble.init() + ingest…      — marble persists the KG to `storage` (~/.events-x-marble/marble-kg.json)
  *   4. report('learning')
- *   5. marble.learn()
- *   6. validate KG has minimum content (interests > 0 OR beliefs > 5)
+ *   5. marble.learn()               — CANONICAL orchestrator (PR #68): seedClones →
+ *                                      insightSwarm → inference → cloneEvolution →
+ *                                      refreshClones → rebuildVectorIndex → cluster →
+ *                                      predictLinks → hypothesisTesting. Single call,
+ *                                      idempotent, gracefully skips stages when their
+ *                                      preconditions aren't met (no LLM key, no
+ *                                      embeddings, empty KG, etc).
+ *   6. marble.investigate()         — adaptive committee fills knowledge gaps via
+ *                                      curator-driven probing
+ *   7. marble.learn() again         — incorporates gap-beliefs into clones + clusters
+ *   8. validate KG has minimum content (interests > 0 OR beliefs > 5)
+ *
+ * KG_VERSION 2 → 3 auto-migration runs inside marble.init() (PR #62). Users
+ * upgrading from older events-x-marble keep their existing KG; marble adds
+ * the persisted vector-index cache, cluster slots, and `_meta` shims on
+ * the next save.
  *
  * On any throw, report('error', category) is fired by the caller (init.mjs's
  * preflight loop). This module only raises with a descriptive message.
@@ -69,7 +87,7 @@ export async function buildKgFromSources({ cfg, kgPath, sources }) {
   if (!process.env.EMBEDDINGS_PROVIDER) process.env.EMBEDDINGS_PROVIDER = "none";
 
   const llmFn = await buildLlmFn(cfg, apiKey);
-  const { Marble } = await import("marble");
+  const { Marble } = await import("@alexshrestha/marble");
 
   const marble = new Marble({
     storage: kgPath,
@@ -112,17 +130,22 @@ export async function buildKgFromSources({ cfg, kgPath, sources }) {
     );
   }
 
+  // First learn pass — canonical orchestrator in marble 0.2.0+ runs all nine
+  // stages (seedClones → insightSwarm → inference → cloneEvolution →
+  // refreshClones → rebuildVectorIndex → cluster → predictLinks →
+  // hypothesisTesting) in one idempotent call. Stages with unmet preconditions
+  // (no embeddings provider, empty KG, etc.) skip cleanly via 'ok-empty' /
+  // 'skipped:reason' instead of throwing.
   await report({
     cfg,
     state: "learning",
-    message: "first learn pass (L1.5 insight swarm → L2 inference → L3 clones)…",
+    message: "first learn pass (canonical orchestrator: insight swarm → clones → clusters → predictions)…",
   });
-
   await marble.learn();
 
-  // Run marble's adaptive investigation committee to fill knowledge gaps
-  // (curator-driven probing, not gated on the first learn). Best-effort —
-  // if investigate isn't available in this marble version, just skip.
+  // Adaptive investigation — curator-driven probing fills knowledge gaps the
+  // first pass couldn't infer from raw episodes. Best-effort: a flaky LLM
+  // mid-investigation shouldn't tank the whole build.
   if (typeof marble.investigate === "function") {
     await report({
       cfg,
@@ -132,16 +155,15 @@ export async function buildKgFromSources({ cfg, kgPath, sources }) {
     try {
       await marble.investigate({ rounds: 1 });
     } catch (e) {
-      // Don't fail the whole build on a flaky investigate pass.
       process.stderr.write(`  [investigate] skipped: ${e.message}\n`);
     }
 
-    // Second learn pass — incorporates anything investigate() produced into
-    // the L1.5/L2/L3 layers so the final KG reflects the full pipeline.
+    // Second learn pass — folds anything investigate() produced into clones +
+    // clusters + link predictions so the final KG reflects the full pipeline.
     await report({
       cfg,
       state: "learning",
-      message: "second learn pass (incorporating new gap-beliefs)…",
+      message: "second learn pass (incorporating gap-beliefs into clones, clusters, predictions)…",
     });
     try {
       await marble.learn();

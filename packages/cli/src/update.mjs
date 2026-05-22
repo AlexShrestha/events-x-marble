@@ -111,7 +111,7 @@ export async function run(args) {
   // Show the new marble version we just pulled, if available.
   try {
     const marblePkg = JSON.parse(
-      readFileSync(path.join(CLI_DIR, "node_modules", "marble", "package.json"), "utf8"),
+      readFileSync(path.join(CLI_DIR, "node_modules", "@alexshrestha", "marble", "package.json"), "utf8"),
     );
     log(quiet, `\n✓ done. CLI ${afterShort} · marble ${marblePkg.version ?? "?"}`);
   } catch {

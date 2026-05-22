@@ -15,6 +15,8 @@
     "node": ">=18"
   },
   "scripts": {
+    "preinstall": "node ../../scripts/preinstall-marble.mjs",
+    "sync:marble": "node ../../scripts/preinstall-marble.mjs && npm install --force",
     "test:dry-init": "node bin/exm.mjs init --dry-run"
   },
   "dependencies": {

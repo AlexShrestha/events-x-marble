@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "preinstall": "node scripts/preinstall-marble.mjs",
+    "sync:marble": "node scripts/preinstall-marble.mjs && bun install --force",
+    "publish:marble": "cd ../GitHub/marble && npm publish --access public",
     "dev": "bun --hot src/server.tsx",
     "start": "bun src/server.tsx",
     "migrate": "bun src/db/migrate.ts",
